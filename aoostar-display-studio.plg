@@ -1,0 +1,123 @@
+<?xml version='1.0' standalone='yes'?>
+<!DOCTYPE PLUGIN [
+  <!ENTITY name      "aoostar-display-studio">
+  <!ENTITY author    "JoshC1994">
+  <!ENTITY version   "2026.11.22">
+  <!ENTITY pluginURL "https://raw.githubusercontent.com/JoshC1994/aoostar-display-studio/main/aoostar-display-studio.plg">
+  <!ENTITY plugdir   "/usr/local/emhttp/plugins/&name;">
+  <!ENTITY configdir "/boot/config/plugins/&name;">
+]>
+<PLUGIN name="&name;" author="&author;" version="&version;" pluginURL="&pluginURL;" min="6.12.0" icon="desktop" support="https://forums.unraid.net/">
+  <CHANGES>
+### 2026.11.22 (v1.0.0) - Initial Release by JoshC1994
+- Local-only Aoostar 960x376 USB LCD Studio &amp; Unraid Exposed Entities Engine
+- Zero OEM software, zero outbound telemetry
+- Native Slackware/Unraid rc.d service &amp; WebGUI Utilities integration
+- Autonomous background USB-UART display daemon with sleep schedule &amp; rotation
+- Built on reverse-engineered protocol groundwork from zehnm/aoostar-rs
+  </CHANGES>
+
+  <!-- Udev rule so Aoostar USB-UART LCD (0416:90a1) gets predictable symlink & rw permissions -->
+  <FILE Name="/etc/udev/rules.d/99-aoostar-lcd.rules" Mode="0644">
+    <INLINE><![CDATA[
+SUBSYSTEM=="tty", ATTRS{idVendor}=="0416", ATTRS{idProduct}=="90a1", MODE="0666", SYMLINK+="aoostar_lcd"
+]]></INLINE>
+  </FILE>
+
+  <!-- Service control script -->
+  <FILE Name="&configdir;/rc.&name;" Mode="0755">
+    <INLINE><![CDATA[
+#!/bin/sh
+APP_DIR="/usr/local/emhttp/plugins/aoostar-display-studio/app"
+PIDFILE="/var/run/aoostar-display-studio.pid"
+LOGFILE="/var/log/aoostar-display-studio.log"
+NODE_BIN=$(which node 2>/dev/null || echo "/usr/local/bin/node")
+
+start() {
+  if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
+    echo "aoostar-display-studio is already running (PID $(cat "$PIDFILE"))"
+    return 0
+  fi
+  if [ ! -x "$NODE_BIN" ]; then
+    echo "Node.js 22+ is required. Install Node.js or run via the Docker template."
+    return 1
+  fi
+  cd "$APP_DIR" || return 1
+  PORT=3088 NODE_ENV=production nohup "$APP_DIR/node_modules/.bin/tsx" server.ts >"$LOGFILE" 2>&1 &
+  echo $! > "$PIDFILE"
+  echo "Started aoostar-display-studio on port 3088"
+}
+
+stop() {
+  if [ -f "$PIDFILE" ]; then
+    kill "$(cat "$PIDFILE")" 2>/dev/null
+    rm -f "$PIDFILE"
+    echo "Stopped aoostar-display-studio"
+  fi
+}
+
+status() {
+  if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
+    echo "Running (PID $(cat "$PIDFILE")) on port 3088"
+  else
+    echo "Stopped"
+  fi
+}
+
+case "$1" in
+  start)   start ;;
+  stop)    stop ;;
+  restart) stop; sleep 1; start ;;
+  status)  status ;;
+  *)       echo "Usage: $0 {start|stop|restart|status}"; exit 1 ;;
+esac
+]]></INLINE>
+  </FILE>
+
+  <!-- Unraid WebGUI Page (Appears under Utilities -> Aoostar Display Studio) -->
+  <FILE Name="&plugdir;/AoostarDisplayStudio.page" Mode="0644">
+    <INLINE><![CDATA[
+Menu="Utilities"
+Title="Aoostar Display Studio"
+Icon="desktop"
+---
+<?PHP
+$host = explode(':', $_SERVER['HTTP_HOST'])[0];
+?>
+<div style="margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;">
+  <span>Running locally on port 3088 · Built by JoshC1994</span>
+  <a href="http://<?=$host?>:3088" target="_blank" class="button">Open Fullscreen</a>
+</div>
+<iframe src="http://<?=$host?>:3088" style="width:100%;height:84vh;border:1px solid #1f2937;border-radius:8px;background:#0b0e14;"></iframe>
+]]></INLINE>
+  </FILE>
+
+  <!-- Auto-start daemon on Unraid boot / array start -->
+  <FILE Name="&plugdir;/event/started" Mode="0755">
+    <INLINE><![CDATA[
+#!/bin/sh
+/boot/config/plugins/aoostar-display-studio/rc.aoostar-display-studio start
+]]></INLINE>
+  </FILE>
+
+  <!-- Install hook -->
+  <FILE Run="/bin/bash" Method="install">
+    <INLINE><![CDATA[
+mkdir -p /boot/config/plugins/aoostar-display-studio/data
+mkdir -p /usr/local/emhttp/plugins/aoostar-display-studio/app
+mkdir -p /usr/local/emhttp/plugins/aoostar-display-studio/event
+udevadm control --reload-rules && udevadm trigger
+echo "Aoostar Display Studio plugin files installed."
+]]></INLINE>
+  </FILE>
+
+  <!-- Remove hook -->
+  <FILE Run="/bin/bash" Method="remove">
+    <INLINE><![CDATA[
+/boot/config/plugins/aoostar-display-studio/rc.aoostar-display-studio stop 2>/dev/null
+rm -f /etc/udev/rules.d/99-aoostar-lcd.rules
+rm -rf /usr/local/emhttp/plugins/aoostar-display-studio
+udevadm control --reload-rules
+]]></INLINE>
+  </FILE>
+</PLUGIN>

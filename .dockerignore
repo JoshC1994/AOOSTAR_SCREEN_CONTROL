@@ -1,0 +1,7 @@
+node_modules
+dist
+data/studio-config.json
+data/uploads
+.git
+.env
+*.log

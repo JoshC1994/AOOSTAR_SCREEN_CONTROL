@@ -1,0 +1,31 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>aoostar-display-studio</Name>
+  <Repository>ghcr.io/joshc1994/aoostar-display-studio:latest</Repository>
+  <Registry>https://ghcr.io</Registry>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>bash</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://forums.unraid.net/</Support>
+  <Project>https://github.com/JoshC1994/aoostar-display-studio</Project>
+  <Overview>Local-first 960x376 USB LCD Studio and Unraid telemetry engine for Aoostar NAS hardware (WTR MAX / GEM12+ PRO) by JoshC1994. Replaces proprietary OEM software with direct USB-UART streaming, drag-and-drop screen design, ApexCharts, custom HTML/images/video, and Home Assistant integration.</Overview>
+  <Description>Aoostar Display Studio gives you full local control over the 960x376 secondary USB-UART display (VID 0x0416, PID 0x90A1) on Aoostar NAS hardware without any proprietary cloud software.[br][br][b]Features:[/b][br]- Drag-and-drop 960x376 screen designer with Blank, Saved, and Template screen workflows[br]- Live Unraid server telemetry (CPU, RAM, array disks, thermals, Docker containers, tasks, SMB users)[br]- Exposed Entities registry for custom tag/unit naming and 1-click placement[br]- Home Assistant and custom local HTTP/JSON endpoint integration[br]- Autonomous background daemon that continues updating and rotating screens automatically across restarts[br]- Brightness, orientation, and overnight sleep schedule controls</Description>
+  <Category>Tools:Utilities System:</Category>
+  <WebUI>http://[IP]:[PORT:3000]/</WebUI>
+  <TemplateURL>https://raw.githubusercontent.com/JoshC1994/aoostar-display-studio/main/templates/aoostar-display-studio.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/JoshC1994/aoostar-display-studio/main/icon.svg</Icon>
+  <ExtraParams>--device=/dev/ttyACM0:/dev/ttyACM0</ExtraParams>
+  <PostArgs/>
+  <CPUset/>
+  <DateInstalled/>
+  <DonateText/>
+  <DonateLink/>
+  <Requires>Aoostar secondary USB-UART display (/dev/ttyACM0, VID 0x0416 PID 0x90A1). Works standalone in preview mode even if no display is attached.</Requires>
+  <Config Name="WebUI Port" Target="3000" Default="3000" Mode="tcp" Description="Web interface port for Aoostar Display Studio" Type="Port" Display="always" Required="true" Mask="false">3000</Config>
+  <Config Name="Config &amp; Custom Media" Target="/app/data" Default="/mnt/user/appdata/aoostar-display-studio" Mode="rw" Description="Persistent configuration, saved screens, entity tags, and uploaded images/videos" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/aoostar-display-studio</Config>
+  <Config Name="Docker Socket" Target="/var/run/docker.sock" Default="/var/run/docker.sock" Mode="ro" Description="Read-only Docker socket for monitoring running containers" Type="Path" Display="always" Required="false" Mask="false">/var/run/docker.sock</Config>
+  <Config Name="Unraid emhttp State" Target="/var/local/emhttp" Default="/var/local/emhttp" Mode="ro" Description="Read-only Unraid array, disk, and user state" Type="Path" Display="always" Required="false" Mask="false">/var/local/emhttp</Config>
+  <Config Name="Hardware Sensors (hwmon)" Target="/sys/class/hwmon" Default="/sys/class/hwmon" Mode="ro" Description="Read-only Linux thermal and fan sensor paths" Type="Path" Display="advanced" Required="false" Mask="false">/sys/class/hwmon</Config>
+  <Config Name="USB LCD Device" Target="/dev/ttyACM0" Default="/dev/ttyACM0" Mode="rw" Description="Aoostar USB-UART secondary LCD device (0416:90a1)" Type="Device" Display="always" Required="false" Mask="false">/dev/ttyACM0</Config>
+</Container>

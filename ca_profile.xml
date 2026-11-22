@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<CommunityApplications>
+  <Profile>JoshC1994 maintains local-first Unraid hardware utilities and display tools, including Aoostar Display Studio — an open-source 960x376 USB-UART secondary LCD studio and real-time Unraid telemetry engine designed to replace proprietary OEM Windows software with zero cloud dependencies.</Profile>
+  <Icon>https://raw.githubusercontent.com/JoshC1994/aoostar-display-studio/main/icon.svg</Icon>
+  <WebPage>https://github.com/JoshC1994/aoostar-display-studio</WebPage>
+  <Forum>https://forums.unraid.net/</Forum>
+</CommunityApplications>
