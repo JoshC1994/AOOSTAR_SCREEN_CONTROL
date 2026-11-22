@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <Container version="2">
   <Name>aoostar-display-studio</Name>
-  <Repository>ghcr.io/joshc1994/aoostar-display-studio:latest</Repository>
+  <Repository>ghcr.io/joshc1994/aoostar_screen_control:latest</Repository>
   <Registry>https://ghcr.io</Registry>
   <Network>bridge</Network>
   <MyIP/>
