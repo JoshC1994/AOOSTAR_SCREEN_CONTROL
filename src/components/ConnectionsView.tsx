@@ -141,7 +141,13 @@ export function ConnectionsView({
                 <span>{telemetry.system.cpuCores} threads</span>
                 {telemetry.system.cpuFreqMhz ? <span>{telemetry.system.cpuFreqMhz} MHz</span> : null}
                 <span>{telemetry.system.cpuPowerW} W</span>
-                {ramPct !== null ? <span>RAM {ramPct}%</span> : null}
+                {ramPct !== null ? (
+                  <span>
+                    RAM {(telemetry.system.ramUsedBytes / 1024 ** 3).toFixed(1)}/
+                    {(telemetry.system.ramTotalBytes / 1024 ** 3).toFixed(1)} GB ({ramPct}%)
+                  </span>
+                ) : null}
+                {telemetry.temps.length > 0 ? <span>{telemetry.temps.length} sensors</span> : null}
               </div>
             </div>
 
@@ -172,7 +178,8 @@ export function ConnectionsView({
                 </>
               ) : (
                 <div className="text-slate-500 dark:text-slate-400">
-                  No GPU sysfs/nvidia-smi sensor detected inside container. Map <code className="font-mono">/dev/dri</code> or NVIDIA runtime if needed.
+                  No GPU detected via nvidia-smi, intel_gpu_top, radeontop, or DRM sysfs. Map{' '}
+                  <code className="font-mono">/dev/dri</code> or NVIDIA runtime if needed.
                 </div>
               )}
             </div>

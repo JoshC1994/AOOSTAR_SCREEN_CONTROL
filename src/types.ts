@@ -127,6 +127,14 @@ export interface GpuInfo {
   vramTotalMB: number | null;
 }
 
+export interface HostSensorReading {
+  id: string;
+  chip: string;
+  label: string;
+  value: number;
+  unit: string;
+}
+
 export interface TelemetrySnapshot {
   timestamp: number;
   sourceMode: DataSourceMode;
@@ -134,6 +142,7 @@ export interface TelemetrySnapshot {
   isRealUnraidHost: boolean;
   agentConnected: boolean;
   haConnected: boolean;
+  collectorTools?: string[];
   system: {
     hostname: string;
     unraidVersion: string;
@@ -181,6 +190,7 @@ export interface TelemetrySnapshot {
   temps: TempSensorInfo[];
   network: NetworkInterfaceInfo[];
   gpus: GpuInfo[];
+  sensors?: HostSensorReading[];
 }
 
 export interface HomeAssistantEntity {

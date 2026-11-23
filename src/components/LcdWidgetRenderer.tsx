@@ -727,11 +727,13 @@ export function LcdWidgetRenderer({
       {widget.type === 'ha_entity' && (() => {
         const entity = haEntities.find((e) => e.entity_id === widget.haEntityId);
         const unit = entity?.attributes.unit_of_measurement ?? '';
-        const friendly = entity?.attributes.friendly_name ?? widget.haEntityId ?? 'Unbound Entity';
+        const friendly =
+          entity?.attributes.friendly_name ??
+          (widget.haEntityId || (haEntities.length === 0 ? 'Connect Home Assistant in Connections' : 'Select HA Entity'));
         return (
           <div className="flex flex-col justify-center flex-1 min-h-0">
             <div className="text-2xl font-bold tabular-nums truncate" style={{color: widget.accentColor}}>
-              {entity ? `${entity.state}${unit ? ` ${unit}` : ''}` : 'N/A'}
+              {entity ? `${entity.state}${unit ? ` ${unit}` : ''}` : 'HA Offline'}
             </div>
             <div className="text-[10px] opacity-70 truncate mt-1">{friendly}</div>
           </div>

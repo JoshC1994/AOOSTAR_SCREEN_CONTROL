@@ -204,7 +204,9 @@ export function ExposedEntitiesView({
               {filtered.length === 0 && (
                 <tr>
                   <td colSpan={6} className="py-8 px-4 text-center text-slate-500">
-                    No exposed entities match your search.
+                    {sourceFilter === 'home_assistant' && !search
+                      ? 'No Home Assistant entities exposed. Connect your Home Assistant instance in the Connections tab.'
+                      : 'No exposed entities match your search.'}
                   </td>
                 </tr>
               )}

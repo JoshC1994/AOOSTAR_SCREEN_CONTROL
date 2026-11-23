@@ -1,7 +1,8 @@
 import fs from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
-import {execSync} from 'node:child_process';
+import {execFile, execSync, spawn} from 'node:child_process';
+import {promisify} from 'node:util';
 import type {
   ActiveSessionInfo,
   CustomConnection,
@@ -13,6 +14,7 @@ import type {
   FanSensorInfo,
   GpuInfo,
   HomeAssistantEntity,
+  HostSensorReading,
   NetworkInterfaceInfo,
   ServerTaskInfo,
   ShareInfo,
@@ -22,6 +24,8 @@ import type {
   VmInfo,
   ZfsPoolInfo,
 } from '../types.ts';
+
+const execFileAsync = promisify(execFile);
 
 interface CpuSample {
   idle: number;
@@ -45,25 +49,35 @@ interface IntelRc6Sample {
 }
 
 let prevCpuSample: CpuSample | null = null;
+let lastCpuSampleAt = 0;
+let lastCpuPercent = 0;
 let prevNetSample: NetSample | null = null;
 let prevRaplSample: RaplSample | null = null;
 const prevIntelRc6Map = new Map<string, IntelRc6Sample>();
-let nvidiaSmiAvailable: boolean | null = null;
+
+function parseProcStatLine(): CpuSample | null {
+  try {
+    const stat = fs.readFileSync('/proc/stat', 'utf8');
+    const line = stat.split('\n')[0];
+    // Use first 8 fields: user, nice, system, idle, iowait, irq, softirq, steal
+    // (Linux already includes guest/guest_nice inside user/nice; summing beyond 8 double-counts VMs)
+    const parts = line
+      .trim()
+      .split(/\s+/)
+      .slice(1, 9)
+      .map((v) => (Number.isFinite(Number(v)) ? Number(v) : 0));
+    if (parts.length < 4) return null;
+    const idle = (parts[3] || 0) + (parts[4] || 0);
+    const total = parts.reduce((acc, v) => acc + v, 0);
+    return {idle, total};
+  } catch {
+    return null;
+  }
+}
 
 // Seed initial CPU sample immediately so the first /api/telemetry call has a real delta
-try {
-  const initStat = fs.readFileSync('/proc/stat', 'utf8');
-  const initLine = initStat.split('\n')[0];
-  const parts = initLine.trim().split(/\s+/).slice(1).map(Number);
-  if (parts.length >= 4) {
-    prevCpuSample = {
-      idle: (parts[3] || 0) + (parts[4] || 0),
-      total: parts.reduce((acc, v) => acc + (Number.isFinite(v) ? v : 0), 0),
-    };
-  }
-} catch {
-  // ignore
-}
+prevCpuSample = parseProcStatLine();
+lastCpuSampleAt = prevCpuSample ? Date.now() : 0;
 
 const historyBuffer = {
   timestamps: [] as string[],
@@ -151,25 +165,32 @@ export function triggerTaskState(taskId: string, action: 'start' | 'stop') {
 }
 
 function readCpuPercentFromProc(): number {
-  try {
-    const stat = fs.readFileSync('/proc/stat', 'utf8');
-    const line = stat.split('\n')[0];
-    const parts = line.trim().split(/\s+/).slice(1).map(Number);
-    const idle = parts[3] + (parts[4] || 0);
-    const total = parts.reduce((acc, v) => acc + v, 0);
-    if (!prevCpuSample) {
-      prevCpuSample = {idle, total};
-      const load1 = os.loadavg()[0];
-      return Math.min(99, Math.max(2, Math.round((load1 / Math.max(1, os.cpus().length)) * 100)));
-    }
-    const diffIdle = idle - prevCpuSample.idle;
-    const diffTotal = total - prevCpuSample.total;
-    prevCpuSample = {idle, total};
-    if (diffTotal <= 0) return 5;
-    return Math.min(100, Math.max(1, Math.round(((diffTotal - diffIdle) / diffTotal) * 100)));
-  } catch {
-    return 12;
+  const now = Date.now();
+  if (lastCpuSampleAt > 0 && now - lastCpuSampleAt < 450 && prevCpuSample) {
+    return lastCpuPercent;
   }
+
+  const cur = parseProcStatLine();
+  if (!cur) return lastCpuPercent;
+
+  if (!prevCpuSample) {
+    prevCpuSample = cur;
+    lastCpuSampleAt = now;
+    const load1 = os.loadavg()[0];
+    lastCpuPercent = Math.min(100, Math.max(0, Math.round((load1 / Math.max(1, os.cpus().length)) * 100)));
+    return lastCpuPercent;
+  }
+
+  const diffIdle = cur.idle - prevCpuSample.idle;
+  const diffTotal = cur.total - prevCpuSample.total;
+  if (diffTotal <= 0) {
+    return lastCpuPercent;
+  }
+
+  prevCpuSample = cur;
+  lastCpuSampleAt = now;
+  lastCpuPercent = Math.min(100, Math.max(0, Math.round(((diffTotal - diffIdle) / diffTotal) * 100)));
+  return lastCpuPercent;
 }
 
 function readProcMemInfo(): {total: number; used: number; cached: number; swapTotal: number; swapUsed: number} {
@@ -181,8 +202,11 @@ function readProcMemInfo(): {total: number; used: number; cached: number; swapTo
       if (m) map[m[1]] = Number(m[2]) * 1024;
     }
     const total = map.MemTotal || os.totalmem();
-    const available = map.MemAvailable || map.MemFree || os.freemem();
-    const cached = (map.Cached || 0) + (map.Buffers || 0);
+    const cached = (map.Cached || 0) + (map.Buffers || 0) + (map.SReclaimable || 0);
+    const available =
+      map.MemAvailable !== undefined
+        ? map.MemAvailable
+        : (map.MemFree || 0) + cached;
     const swapTotal = map.SwapTotal || 0;
     const swapFree = map.SwapFree || 0;
     return {
@@ -320,16 +344,410 @@ function readLocalCpuDetails(): {model: string; cores: number; freqMhz: number |
   return {model, cores, freqMhz};
 }
 
+interface SensorsCliResult {
+  available: boolean;
+  temps: DetailedTempSensor[];
+  fans: FanSensorInfo[];
+  rawSensors: HostSensorReading[];
+  cpuPowerW: number | null;
+  amdGpuTempC: number | null;
+  amdGpuPowerW: number | null;
+}
+
+interface IntelGpuTopResult {
+  utilPercent: number | null;
+  freqMhz: number | null;
+  powerW: number | null;
+}
+
+interface RadeonTopResult {
+  utilPercent: number | null;
+  vramUsedMB: number | null;
+  freqMhz: number | null;
+}
+
+interface HostCliCache {
+  updatedAt: number;
+  sensors: SensorsCliResult | null;
+  nvidiaGpus: GpuInfo[];
+  nvidiaAvailable: boolean;
+  intelGpuTop: IntelGpuTopResult | null;
+  intelGpuTopAvailable: boolean;
+  radeonTop: RadeonTopResult | null;
+  radeonTopAvailable: boolean;
+}
+
+const hostCliCache: HostCliCache = {
+  updatedAt: 0,
+  sensors: null,
+  nvidiaGpus: [],
+  nvidiaAvailable: false,
+  intelGpuTop: null,
+  intelGpuTopAvailable: false,
+  radeonTop: null,
+  radeonTopAvailable: false,
+};
+
+let cliProbeInFlight: Promise<void> | null = null;
+const toolBinaryAvailable = new Map<string, boolean>();
+
+function hasBinaryInPath(bin: string): boolean {
+  const cached = toolBinaryAvailable.get(bin);
+  if (cached !== undefined) return cached;
+  const searchDirs = (process.env.PATH || '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin').split(':');
+  let found = false;
+  for (const dir of searchDirs) {
+    if (!dir) continue;
+    try {
+      const full = `${dir}/${bin}`;
+      if (fs.existsSync(full)) {
+        found = true;
+        break;
+      }
+    } catch {
+      // ignore
+    }
+  }
+  toolBinaryAvailable.set(bin, found);
+  return found;
+}
+
+function detectDrmVendors(): {hasIntel: boolean; hasAmd: boolean} {
+  let hasIntel = false;
+  let hasAmd = false;
+  try {
+    const drmBase = '/sys/class/drm';
+    if (!fs.existsSync(drmBase)) return {hasIntel, hasAmd};
+    for (const card of fs.readdirSync(drmBase)) {
+      if (!/^card\d+$/.test(card)) continue;
+      const vendor = (readSysfsText(`${drmBase}/${card}/device/vendor`) || '').toLowerCase();
+      if (vendor === '0x8086') hasIntel = true;
+      if (vendor === '0x1002') hasAmd = true;
+    }
+  } catch {
+    // ignore
+  }
+  return {hasIntel, hasAmd};
+}
+
+function slugSensorPart(raw: string): string {
+  return raw
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+async function probeSensorsJson(): Promise<SensorsCliResult | null> {
+  if (!hasBinaryInPath('sensors')) return null;
+  try {
+    const {stdout} = await execFileAsync('sensors', ['-j'], {encoding: 'utf8', timeout: 1400});
+    const parsed = JSON.parse(stdout) as Record<string, Record<string, unknown>>;
+    const temps: DetailedTempSensor[] = [];
+    const fans: FanSensorInfo[] = [];
+    const rawSensors: HostSensorReading[] = [];
+    let cpuPowerW: number | null = null;
+    let amdGpuTempC: number | null = null;
+    let amdGpuPowerW: number | null = null;
+
+    for (const [chipFull, chipObj] of Object.entries(parsed)) {
+      if (!chipObj || typeof chipObj !== 'object') continue;
+      const chipLower = chipFull.toLowerCase();
+      const chipShort = chipFull.split('-')[0] || chipFull;
+
+      for (const [featureName, featureVal] of Object.entries(chipObj)) {
+        if (featureName === 'Adapter' || !featureVal || typeof featureVal !== 'object') continue;
+        const sub = featureVal as Record<string, unknown>;
+        let maxTempC = 85;
+
+        for (const [subKey, rawNum] of Object.entries(sub)) {
+          if (typeof rawNum !== 'number' || !Number.isFinite(rawNum)) continue;
+          if (/^temp\d+_max$/.test(subKey) || /^temp\d+_crit$/.test(subKey)) {
+            if (rawNum > 20 && rawNum < 150) maxTempC = Number(rawNum.toFixed(1));
+          }
+        }
+
+        for (const [subKey, rawNum] of Object.entries(sub)) {
+          if (typeof rawNum !== 'number' || !Number.isFinite(rawNum)) continue;
+
+          if (/^temp\d+_input$/.test(subKey)) {
+            if (rawNum <= -50 || rawNum >= 150) continue;
+            const tempC = Number(rawNum.toFixed(1));
+            const sid = `sensor.${slugSensorPart(chipShort)}.${slugSensorPart(featureName)}`;
+            temps.push({
+              id: sid,
+              chipName: chipLower,
+              label: featureName,
+              tempC,
+              highC: maxTempC,
+            });
+            rawSensors.push({
+              id: sid,
+              chip: chipFull,
+              label: `${chipShort} ${featureName}`,
+              value: tempC,
+              unit: '°C',
+            });
+            if (chipLower.includes('amdgpu') && (amdGpuTempC === null || /edge|junction/i.test(featureName))) {
+              amdGpuTempC = tempC;
+            }
+          } else if (/^fan\d+_input$/.test(subKey)) {
+            const rpm = Math.round(rawNum);
+            const sid = `sensor.${slugSensorPart(chipShort)}.${slugSensorPart(featureName)}`;
+            fans.push({
+              id: sid,
+              label: `${chipShort} ${featureName}`,
+              rpm,
+              pwmPercent: Math.min(100, Math.round((rpm / 2400) * 100)),
+            });
+            rawSensors.push({
+              id: sid,
+              chip: chipFull,
+              label: `${chipShort} ${featureName}`,
+              value: rpm,
+              unit: 'RPM',
+            });
+          } else if (/^power\d+_(average|input)$/.test(subKey)) {
+            const watts = Number(rawNum.toFixed(1));
+            const sid = `sensor.${slugSensorPart(chipShort)}.${slugSensorPart(featureName)}`;
+            rawSensors.push({
+              id: sid,
+              chip: chipFull,
+              label: `${chipShort} ${featureName}`,
+              value: watts,
+              unit: 'W',
+            });
+            if (
+              cpuPowerW === null &&
+              (chipLower.includes('energy') ||
+                chipLower.includes('zenergy') ||
+                chipLower.includes('zenpower') ||
+                chipLower.includes('k10temp') ||
+                chipLower.includes('coretemp'))
+            ) {
+              cpuPowerW = watts;
+            }
+            if (chipLower.includes('amdgpu') && (amdGpuPowerW === null || /ppt/i.test(featureName))) {
+              amdGpuPowerW = watts;
+            }
+          }
+        }
+      }
+    }
+
+    return {
+      available: true,
+      temps,
+      fans,
+      rawSensors,
+      cpuPowerW,
+      amdGpuTempC,
+      amdGpuPowerW,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function probeNvidiaSmi(): Promise<{available: boolean; gpus: GpuInfo[]}> {
+  if (!hasBinaryInPath('nvidia-smi')) return {available: false, gpus: []};
+  try {
+    const {stdout} = await execFileAsync(
+      'nvidia-smi',
+      [
+        '--query-gpu=name,temperature.gpu,utilization.gpu,memory.used,memory.total,power.draw,clocks.current.graphics',
+        '--format=csv,noheader,nounits',
+      ],
+      {encoding: 'utf8', timeout: 1200}
+    );
+    const gpus: GpuInfo[] = [];
+    const lines = stdout.trim().split('\n').filter(Boolean);
+    lines.forEach((line, idx) => {
+      const parts = line.split(',').map((s) => s.trim());
+      if (parts.length < 5) return;
+      const parseMaybe = (v: string | undefined) => {
+        if (!v || v === '[N/A]' || v === 'N/A') return null;
+        const n = Number(v);
+        return Number.isFinite(n) ? n : null;
+      };
+      gpus.push({
+        id: `nvidia-${idx}`,
+        name: parts[0] || `NVIDIA GPU ${idx}`,
+        vendor: 'nvidia',
+        tempC: parseMaybe(parts[1]),
+        utilPercent: parseMaybe(parts[2]),
+        vramUsedMB: parseMaybe(parts[3]),
+        vramTotalMB: parseMaybe(parts[4]),
+        powerW: parseMaybe(parts[5]),
+        freqMhz: parseMaybe(parts[6]),
+      });
+    });
+    return {available: true, gpus};
+  } catch {
+    return {available: false, gpus: []};
+  }
+}
+
+async function probeIntelGpuTop(): Promise<{available: boolean; data: IntelGpuTopResult | null}> {
+  if (!hasBinaryInPath('intel_gpu_top')) return {available: false, data: null};
+  return new Promise((resolve) => {
+    let stdout = '';
+    let settled = false;
+    const child = spawn('intel_gpu_top', ['-J', '-s', '250'], {stdio: ['ignore', 'pipe', 'ignore']});
+
+    const finish = (available: boolean, data: IntelGpuTopResult | null) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      try {
+        child.kill('SIGINT');
+      } catch {
+        // ignore
+      }
+      resolve({available, data});
+    };
+
+    const timer = setTimeout(() => {
+      // Parse whatever first JSON object arrived if stream started
+      const parsed = tryExtractIntelJson(stdout);
+      finish(Boolean(parsed), parsed);
+    }, 750);
+
+    child.on('error', () => finish(false, null));
+    child.stdout.on('data', (chunk: Buffer) => {
+      stdout += chunk.toString('utf8');
+      const parsed = tryExtractIntelJson(stdout);
+      if (parsed) finish(true, parsed);
+    });
+    child.on('exit', () => {
+      const parsed = tryExtractIntelJson(stdout);
+      finish(Boolean(parsed), parsed);
+    });
+  });
+}
+
+function tryExtractIntelJson(raw: string): IntelGpuTopResult | null {
+  const cleaned = raw.trim().replace(/^\[/, '').replace(/^,/, '');
+  let depth = 0;
+  let start = -1;
+  for (let i = 0; i < cleaned.length; i++) {
+    const ch = cleaned[i];
+    if (ch === '{') {
+      if (depth === 0) start = i;
+      depth++;
+    } else if (ch === '}') {
+      depth--;
+      if (depth === 0 && start >= 0) {
+        const slice = cleaned.slice(start, i + 1);
+        try {
+          const obj = JSON.parse(slice) as {
+            frequency?: {actual?: number};
+            power?: {GPU?: number; Package?: number};
+            engines?: Record<string, {busy?: number}>;
+          };
+          const busyVals = Object.values(obj.engines || {})
+            .map((e) => (typeof e?.busy === 'number' ? e.busy : 0))
+            .filter((n) => Number.isFinite(n));
+          const maxBusy = busyVals.length > 0 ? Math.round(Math.max(...busyVals)) : null;
+          const freqMhz =
+            typeof obj.frequency?.actual === 'number' ? Math.round(obj.frequency.actual) : null;
+          const rawPower = obj.power?.GPU ?? obj.power?.Package;
+          const powerW = typeof rawPower === 'number' ? Number(rawPower.toFixed(1)) : null;
+          return {utilPercent: maxBusy, freqMhz, powerW};
+        } catch {
+          // continue looking
+        }
+      }
+    }
+  }
+  return null;
+}
+
+async function probeRadeonTop(): Promise<{available: boolean; data: RadeonTopResult | null}> {
+  if (!hasBinaryInPath('radeontop')) return {available: false, data: null};
+  try {
+    const {stdout} = await execFileAsync('radeontop', ['-d', '-', '-l', '1'], {
+      encoding: 'utf8',
+      timeout: 1200,
+    });
+    const line = stdout.trim().split('\n').pop() || '';
+    const gpuMatch = line.match(/gpu\s+([\d.]+)%/i);
+    const vramMatch = line.match(/vram\s+[\d.]+%\s+([\d.]+)mb/i);
+    const sclkMatch = line.match(/sclk\s+([\d.]+)(ghz|mhz)/i);
+    let freqMhz: number | null = null;
+    if (sclkMatch) {
+      const val = Number(sclkMatch[1]);
+      freqMhz = sclkMatch[2].toLowerCase() === 'ghz' ? Math.round(val * 1000) : Math.round(val);
+    }
+    return {
+      available: true,
+      data: {
+        utilPercent: gpuMatch ? Math.round(Number(gpuMatch[1])) : null,
+        vramUsedMB: vramMatch ? Math.round(Number(vramMatch[1])) : null,
+        freqMhz,
+      },
+    };
+  } catch {
+    return {available: false, data: null};
+  }
+}
+
+async function refreshHostCliCacheIfNeeded(): Promise<void> {
+  const now = Date.now();
+  if (now - hostCliCache.updatedAt < 2000 && hostCliCache.updatedAt > 0) {
+    return;
+  }
+  if (cliProbeInFlight) {
+    await cliProbeInFlight;
+    return;
+  }
+
+  cliProbeInFlight = (async () => {
+    try {
+      const {hasIntel, hasAmd} = detectDrmVendors();
+      const [sensorsRes, nvidiaRes, intelRes, radeonRes] = await Promise.all([
+        probeSensorsJson(),
+        probeNvidiaSmi(),
+        hasIntel ? probeIntelGpuTop() : Promise.resolve({available: false, data: null}),
+        hasAmd ? probeRadeonTop() : Promise.resolve({available: false, data: null}),
+      ]);
+
+      hostCliCache.sensors = sensorsRes;
+      hostCliCache.nvidiaAvailable = nvidiaRes.available;
+      hostCliCache.nvidiaGpus = nvidiaRes.gpus;
+      hostCliCache.intelGpuTopAvailable = intelRes.available;
+      hostCliCache.intelGpuTop = intelRes.data;
+      hostCliCache.radeonTopAvailable = radeonRes.available;
+      hostCliCache.radeonTop = radeonRes.data;
+      hostCliCache.updatedAt = Date.now();
+    } finally {
+      cliProbeInFlight = null;
+    }
+  })();
+
+  await cliProbeInFlight;
+}
+
 function readLocalHwmon(): {
   temps: DetailedTempSensor[];
   fans: FanSensorInfo[];
+  rawSensors: HostSensorReading[];
   cpuTempC: number | null;
   hwmonCpuPowerW: number | null;
 } {
   const temps: DetailedTempSensor[] = [];
   const fans: FanSensorInfo[] = [];
+  const rawSensors: HostSensorReading[] = [];
   let hwmonCpuPowerW: number | null = null;
 
+  const cliSensors = hostCliCache.sensors;
+  if (cliSensors?.available) {
+    temps.push(...cliSensors.temps);
+    fans.push(...cliSensors.fans);
+    rawSensors.push(...cliSensors.rawSensors);
+    hwmonCpuPowerW = cliSensors.cpuPowerW;
+  }
+
+  // Merge /sys/class/hwmon entries (provides sensors even if lm-sensors isn't installed or misses a node)
   try {
     const base = '/sys/class/hwmon';
     if (fs.existsSync(base)) {
@@ -354,13 +772,27 @@ function readLocalHwmon(): {
               } catch {
                 // ignore
               }
-              temps.push({
-                id: `${dir}-temp${idx}`,
-                chipName,
-                label,
-                tempC: Number((milli / 1000).toFixed(1)),
-                highC: 85,
-              });
+              const alreadyFromCli = temps.some(
+                (t) => t.chipName.startsWith(chipName) && t.label.toLowerCase() === label.toLowerCase()
+              );
+              const tempC = Number((milli / 1000).toFixed(1));
+              if (!alreadyFromCli) {
+                const sid = `sensor.${slugSensorPart(chipName)}.${slugSensorPart(label || `temp${idx}`)}`;
+                temps.push({
+                  id: sid,
+                  chipName,
+                  label,
+                  tempC,
+                  highC: 85,
+                });
+                rawSensors.push({
+                  id: sid,
+                  chip: chipName,
+                  label: `${chipName} ${label}`,
+                  value: tempC,
+                  unit: '°C',
+                });
+              }
             } catch {
               // ignore unreadable sensor
             }
@@ -370,12 +802,24 @@ function readLocalHwmon(): {
             try {
               const rpm = Number(fs.readFileSync(`${fullDir}/${file}`, 'utf8').trim());
               if (Number.isFinite(rpm)) {
-                fans.push({
-                  id: `${dir}-fan${idx}`,
-                  label: `${chipName} Fan ${idx}`,
-                  rpm,
-                  pwmPercent: Math.min(100, Math.round((rpm / 2400) * 100)),
-                });
+                const fanLabel = `${chipName} Fan ${idx}`;
+                const alreadyFromCli = fans.some((f) => f.label.toLowerCase().includes(`${chipName} fan${idx}`));
+                if (!alreadyFromCli && !cliSensors?.available) {
+                  const sid = `sensor.${slugSensorPart(chipName)}.fan${idx}`;
+                  fans.push({
+                    id: sid,
+                    label: fanLabel,
+                    rpm,
+                    pwmPercent: Math.min(100, Math.round((rpm / 2400) * 100)),
+                  });
+                  rawSensors.push({
+                    id: sid,
+                    chip: chipName,
+                    label: fanLabel,
+                    value: rpm,
+                    unit: 'RPM',
+                  });
+                }
               }
             } catch {
               // ignore
@@ -438,7 +882,7 @@ function readLocalHwmon(): {
     // ignore
   }
 
-  // Pick CPU temp strictly by sensor priority instead of blind temps[0]
+  // Pick CPU temp strictly by sensor priority matching Unraid / lm-sensors conventions
   const pickTemp = (pred: (t: DetailedTempSensor) => boolean): number | null => {
     const hit = temps.find(pred);
     return hit ? hit.tempC : null;
@@ -456,7 +900,7 @@ function readLocalHwmon(): {
     pickTemp(
       (t) =>
         (t.chipName.startsWith('nct') || t.chipName.startsWith('it8') || t.chipName.startsWith('f71')) &&
-        /cpu|peci/i.test(t.label)
+        /cpu|peci|cputin/i.test(t.label)
     ) ??
     thermalPkgTemp ??
     thermalAcpiTemp ??
@@ -464,7 +908,7 @@ function readLocalHwmon(): {
     temps[0]?.tempC ??
     null;
 
-  return {temps, fans, cpuTempC, hwmonCpuPowerW};
+  return {temps, fans, rawSensors, cpuTempC, hwmonCpuPowerW};
 }
 
 function readRaplPowerWatts(): number | null {
@@ -527,44 +971,10 @@ function readSysfsNumber(filePath: string): number | null {
 }
 
 function readLocalGpus(): GpuInfo[] {
-  const gpus: GpuInfo[] = [];
+  const gpus: GpuInfo[] = [...hostCliCache.nvidiaGpus];
 
-  // 1. NVIDIA via nvidia-smi (when NVIDIA Driver + container toolkit are present on Unraid)
-  if (nvidiaSmiAvailable !== false) {
-    try {
-      const out = execSync(
-        'nvidia-smi --query-gpu=name,temperature.gpu,utilization.gpu,memory.used,memory.total,power.draw,clocks.current.graphics --format=csv,noheader,nounits 2>/dev/null',
-        {encoding: 'utf8', timeout: 1000}
-      ).trim();
-      nvidiaSmiAvailable = true;
-      if (out) {
-        out.split('\n').forEach((line, idx) => {
-          const parts = line.split(',').map((s) => s.trim());
-          if (parts.length < 5) return;
-          const parseMaybe = (v: string | undefined) => {
-            if (!v || v === '[N/A]' || v === 'N/A') return null;
-            const n = Number(v);
-            return Number.isFinite(n) ? n : null;
-          };
-          gpus.push({
-            id: `nvidia-${idx}`,
-            name: parts[0] || `NVIDIA GPU ${idx}`,
-            vendor: 'nvidia',
-            tempC: parseMaybe(parts[1]),
-            utilPercent: parseMaybe(parts[2]),
-            vramUsedMB: parseMaybe(parts[3]),
-            vramTotalMB: parseMaybe(parts[4]),
-            powerW: parseMaybe(parts[5]),
-            freqMhz: parseMaybe(parts[6]),
-          });
-        });
-      }
-    } catch {
-      nvidiaSmiAvailable = false;
-    }
-  }
-
-  // 2. DRM sysfs GPUs (AMD amdgpu e.g. Radeon 780M on WTR MAX, Intel i915/xe Arc/UHD, etc.)
+  // DRM sysfs GPUs (AMD amdgpu e.g. Radeon 780M on WTR MAX, Intel i915/xe Arc/UHD, etc.)
+  // enriched with radeontop / intel_gpu_top / lm-sensors CLI readings when available
   try {
     const drmBase = '/sys/class/drm';
     if (fs.existsSync(drmBase)) {
@@ -629,22 +1039,37 @@ function readLocalGpus(): GpuInfo[] {
         let utilPercent: number | null = readSysfsNumber(`${devDir}/gpu_busy_percent`);
         const vramUsedBytes = readSysfsNumber(`${devDir}/mem_info_vram_used`);
         const vramTotalBytes = readSysfsNumber(`${devDir}/mem_info_vram_total`);
-        const vramUsedMB = vramUsedBytes !== null ? Math.round(vramUsedBytes / (1024 * 1024)) : null;
+        let vramUsedMB = vramUsedBytes !== null ? Math.round(vramUsedBytes / (1024 * 1024)) : null;
         const vramTotalMB = vramTotalBytes !== null ? Math.round(vramTotalBytes / (1024 * 1024)) : null;
 
-        if (freqMhz === null && vendor === 'amd') {
-          const dpm = readSysfsText(`${devDir}/pp_dpm_sclk`);
-          const activeLine = dpm?.split('\n').find((l) => l.includes('*'));
-          const m = activeLine?.match(/(\d+)\s*Mhz/i);
-          if (m) freqMhz = Number(m[1]);
+        if (vendor === 'amd') {
+          if (freqMhz === null) {
+            const dpm = readSysfsText(`${devDir}/pp_dpm_sclk`);
+            const activeLine = dpm?.split('\n').find((l) => l.includes('*'));
+            const m = activeLine?.match(/(\d+)\s*Mhz/i);
+            if (m) freqMhz = Number(m[1]);
+          }
+          if (hostCliCache.radeonTop) {
+            utilPercent = utilPercent ?? hostCliCache.radeonTop.utilPercent;
+            vramUsedMB = vramUsedMB ?? hostCliCache.radeonTop.vramUsedMB;
+            freqMhz = freqMhz ?? hostCliCache.radeonTop.freqMhz;
+          }
+          if (hostCliCache.sensors) {
+            tempC = tempC ?? hostCliCache.sensors.amdGpuTempC;
+            powerW = powerW ?? hostCliCache.sensors.amdGpuPowerW;
+          }
         }
 
         if (vendor === 'intel') {
           freqMhz =
+            hostCliCache.intelGpuTop?.freqMhz ??
             freqMhz ??
             readSysfsNumber(`${drmBase}/${card}/gt_cur_freq_mhz`) ??
             readSysfsNumber(`${drmBase}/${card}/gt/gt0/rps_cur_freq_mhz`) ??
             readSysfsNumber(`${drmBase}/${card}/tile0/gt0/freq0/cur_freq`);
+
+          powerW = hostCliCache.intelGpuTop?.powerW ?? powerW;
+          utilPercent = hostCliCache.intelGpuTop?.utilPercent ?? utilPercent;
 
           if (utilPercent === null) {
             const rc6Ms =
@@ -915,6 +1340,8 @@ function readSmbSessions(): ActiveSessionInfo[] {
 }
 
 export async function getLocalHostTelemetry(haConnected: boolean): Promise<TelemetrySnapshot> {
+  await refreshHostCliCacheIfNeeded();
+
   const cpuPercent = readCpuPercentFromProc();
   const cpuDetails = readLocalCpuDetails();
   const mem = readProcMemInfo();
@@ -948,15 +1375,23 @@ export async function getLocalHostTelemetry(haConnected: boolean): Promise<Telem
   const cpuPowerW =
     raplWatts ?? hwmon.hwmonCpuPowerW ?? Number((12 + cpuPercent * 0.4).toFixed(1));
 
+  const collectorTools: string[] = ['procfs', 'sysfs'];
+  if (isUnraidHost) collectorTools.push('emhttp');
+  if (hostCliCache.sensors?.available) collectorTools.push('lm-sensors');
+  if (hostCliCache.nvidiaAvailable) collectorTools.push('nvidia-smi');
+  if (hostCliCache.intelGpuTopAvailable) collectorTools.push('intel_gpu_top');
+  if (hostCliCache.radeonTopAvailable) collectorTools.push('radeontop');
+
   return {
     timestamp: Date.now(),
     sourceMode: 'local',
     sourceLabel: isUnraidHost
-      ? 'Local Unraid Host (emhttp + procfs + sysfs)'
-      : 'Local Linux Host (procfs + sysfs)',
+      ? `Local Unraid Host (${collectorTools.join(' + ')})`
+      : `Local Linux Host (${collectorTools.join(' + ')})`,
     isRealUnraidHost: isUnraidHost || fs.existsSync('/var/run/docker.sock'),
     agentConnected: false,
     haConnected,
+    collectorTools,
     system: {
       hostname: emhttp.NAME || os.hostname(),
       unraidVersion: emhttp.version ? `Unraid OS ${emhttp.version}` : `${os.type()} ${os.release()}`,
@@ -1019,6 +1454,7 @@ export async function getLocalHostTelemetry(haConnected: boolean): Promise<Telem
     temps: hwmon.temps.map(({id, label, tempC, highC}) => ({id, label, tempC, highC})),
     network: net.interfaces,
     gpus,
+    sensors: hwmon.rawSensors,
   };
 }
 
@@ -1594,36 +2030,9 @@ export async function fetchHomeAssistantEntities(
     }
   }
 
-  const nowIso = new Date().toISOString();
-  const t = Date.now() / 1000;
   return {
     connected: false,
-    entities: [
-      {
-        entity_id: 'sensor.solar_power_w',
-        state: String(Math.round(2840 + Math.sin(t * 0.2) * 140)),
-        attributes: {friendly_name: 'Solar Array Generation', unit_of_measurement: 'W', device_class: 'power'},
-        last_changed: nowIso,
-      },
-      {
-        entity_id: 'sensor.server_rack_temp',
-        state: (23.4 + Math.sin(t * 0.1) * 0.3).toFixed(1),
-        attributes: {friendly_name: 'Server Rack Ambient', unit_of_measurement: '°C', device_class: 'temperature'},
-        last_changed: nowIso,
-      },
-      {
-        entity_id: 'sensor.wan_download_mbps',
-        state: (184.6 + Math.cos(t * 0.4) * 24).toFixed(1),
-        attributes: {friendly_name: 'WAN Gateway Download', unit_of_measurement: 'Mbps', device_class: 'data_rate'},
-        last_changed: nowIso,
-      },
-      {
-        entity_id: 'sensor.home_power_import_w',
-        state: String(Math.round(412 + Math.cos(t * 0.3) * 35)),
-        attributes: {friendly_name: 'Grid Power Draw', unit_of_measurement: 'W', device_class: 'power'},
-        last_changed: nowIso,
-      },
-    ],
+    entities: [],
   };
 }
 
@@ -1824,6 +2233,17 @@ export function buildExposedEntities(
 
   for (const disk of snapshot.disks) {
     pushEntity(`disk.${disk.id}.temp_c`, 'server', `${disk.name} Temp`, disk.tempC, '°C');
+  }
+
+  const seenSensorIds = new Set<string>(list.map((item) => item.id));
+  for (const s of snapshot.sensors ?? []) {
+    let uniqueId = s.id;
+    let suffix = 2;
+    while (seenSensorIds.has(uniqueId)) {
+      uniqueId = `${s.id}_${suffix++}`;
+    }
+    seenSensorIds.add(uniqueId);
+    pushEntity(uniqueId, 'server', s.label, s.value, s.unit);
   }
 
   for (const ha of haEntities) {

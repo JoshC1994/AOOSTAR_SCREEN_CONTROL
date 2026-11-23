@@ -2,7 +2,7 @@ FROM node:22-alpine
 
 WORKDIR /app
 
-RUN apk add --no-cache bash coreutils
+RUN apk add --no-cache bash coreutils lm-sensors && (apk add --no-cache radeontop || true) && (apk add --no-cache intel-gpu-tools || true)
 
 COPY package.json bun.lock* package-lock.json* ./
 RUN npm install

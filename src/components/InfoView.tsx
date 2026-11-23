@@ -27,8 +27,8 @@ export function InfoView({onOpenGuide, uiTheme, onChangeUiTheme}: InfoViewProps)
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
-            <span className="text-xs font-mono text-amber-600 dark:text-amber-400">
-              Version 1.0.0 (2026.11.22)
+            <span className="text-xs font-mono text-amber-600 dark:text-amber-400 tabular-nums">
+              Version {typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.0.1'}
             </span>
             <button
               onClick={onOpenGuide}

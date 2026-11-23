@@ -34,6 +34,16 @@ const DATA_DIR = path.resolve(process.cwd(), 'data');
 const UPLOADS_DIR = path.join(DATA_DIR, 'uploads');
 const CONFIG_PATH = path.join(DATA_DIR, 'studio-config.json');
 
+let APP_VERSION = '1.0.1';
+try {
+  const pkg = JSON.parse(fs.readFileSync(path.resolve(process.cwd(), 'package.json'), 'utf8')) as {
+    version?: string;
+  };
+  if (pkg.version) APP_VERSION = pkg.version;
+} catch {
+  // fallback
+}
+
 fs.mkdirSync(UPLOADS_DIR, {recursive: true});
 
 function loadConfig(): StudioConfig {
@@ -498,9 +508,13 @@ async function bootstrap() {
     res.send(generateUnraidCommunityAppsXml(PORT));
   });
 
+  app.get('/api/info', (_req, res) => {
+    res.json({name: 'Aoostar Display Studio', version: APP_VERSION});
+  });
+
   app.get('/api/export/unraid-plg', (_req, res) => {
     res.setHeader('Content-Type', 'application/xml');
-    res.send(generateUnraidPluginPlg(3088));
+    res.send(generateUnraidPluginPlg(3088, APP_VERSION));
   });
 
   app.get('/api/export/docker-compose', (_req, res) => {
@@ -523,7 +537,7 @@ async function bootstrap() {
   }
 
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Aoostar Display Studio listening on http://0.0.0.0:${PORT}`);
+    console.log(`Aoostar Display Studio v${APP_VERSION} listening on http://0.0.0.0:${PORT}`);
     startHardwareDaemon(
       () => currentConfig,
       (patch) => {

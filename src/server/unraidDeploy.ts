@@ -1,16 +1,16 @@
-export function generateUnraidPluginPlg(port = 3088): string {
+export function generateUnraidPluginPlg(port = 3088, appVersion = '1.0.1'): string {
   return `<?xml version='1.0' standalone='yes'?>
 <!DOCTYPE PLUGIN [
   <!ENTITY name      "aoostar-display-studio">
   <!ENTITY author    "JoshC1994">
-  <!ENTITY version   "2026.11.22">
+  <!ENTITY version   "2026.11.23">
   <!ENTITY pluginURL "https://raw.githubusercontent.com/JoshC1994/aoostar-display-studio/main/aoostar-display-studio.plg">
   <!ENTITY plugdir   "/usr/local/emhttp/plugins/&name;">
   <!ENTITY configdir "/boot/config/plugins/&name;">
 ]>
 <PLUGIN name="&name;" author="&author;" version="&version;" pluginURL="&pluginURL;" min="6.12.0" icon="desktop" support="https://forums.unraid.net/">
   <CHANGES>
-### 2026.11.22 (v1.0.0) - Initial Release by JoshC1994
+### 2026.11.23 (v${appVersion}) - Real Unraid Sensor &amp; GPU Parity by JoshC1994
 - Local-only Aoostar 960x376 USB LCD Studio &amp; Unraid Exposed Entities Engine
 - Zero OEM software, zero outbound telemetry
 - Native Slackware/Unraid rc.d service &amp; WebGUI Settings/Utilities integration

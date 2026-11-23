@@ -5,7 +5,19 @@ import path from 'path';
 import {defineConfig} from 'vite';
 
 export default defineConfig(() => {
+  const pkgPath = path.resolve(__dirname, 'package.json');
+  let appVersion = '1.0.1';
+  try {
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8')) as {version?: string};
+    if (pkg.version) appVersion = pkg.version;
+  } catch {
+    // fallback
+  }
+
   return {
+    define: {
+      __APP_VERSION__: JSON.stringify(appVersion),
+    },
     plugins: [
       react(),
       tailwindcss(),
