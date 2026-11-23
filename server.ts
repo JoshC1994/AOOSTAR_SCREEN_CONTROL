@@ -454,7 +454,8 @@ async function bootstrap() {
       (patch) => {
         currentConfig.hardwareDeploy = {...currentConfig.hardwareDeploy, ...patch};
       },
-      rgbaBase64
+      rgbaBase64,
+      true
     );
 
     res.json({
@@ -476,6 +477,7 @@ async function bootstrap() {
       screenName: screenName || 'Active Screen',
       devicePath: currentConfig.hardware.devicePath,
       brightness: currentConfig.hardware.brightness,
+      forceFull: true,
     });
     res.json(meta);
   });

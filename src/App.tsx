@@ -15,6 +15,7 @@ import type {
   LcdScreen,
   StudioConfig,
   TelemetrySnapshot,
+  UiThemePreference,
 } from './types.ts';
 import {rasterizeScreenToRgbaBase64} from './utils/lcdRasterizer.ts';
 import {isScreenUnsaved, screenSignature, upsertSavedScreen} from './utils/screenSave.ts';
@@ -39,6 +40,15 @@ interface TelemetryApiResponse {
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('screens');
+  const [uiTheme, setUiTheme] = useState<UiThemePreference>(() => {
+    try {
+      const saved = window.localStorage.getItem('aoostar_studio_ui_theme');
+      if (saved === 'light' || saved === 'dark' || saved === 'system') return saved;
+    } catch {
+      // ignore storage read error
+    }
+    return 'dark';
+  });
   const [config, setConfig] = useState<StudioConfig>(DEFAULT_CONFIG);
   const [configLoaded, setConfigLoaded] = useState(false);
   const [telemetry, setTelemetry] = useState<TelemetrySnapshot | null>(null);
@@ -47,7 +57,7 @@ export default function App() {
   const [haConnected, setHaConnected] = useState(false);
   const [lastFrame, setLastFrame] = useState<LastFrameMeta | null>(null);
   const [pushing, setPushing] = useState(false);
-  const [pushFeedback, setPushFeedback] = useState<string | null>(null);
+  const [pushFeedback, setPushFeedback] = useState<{ok: boolean; text: string} | null>(null);
   const [dismissedSignatures, setDismissedSignatures] = useState<Record<string, string>>({});
   const [pendingSavePrompt, setPendingSavePrompt] = useState<
     | {kind: 'tab'; nextTab: ActiveTab; screens: LcdScreen[]}
@@ -62,6 +72,25 @@ export default function App() {
       return false;
     }
   });
+
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    const applyTheme = () => {
+      const isDark = uiTheme === 'dark' || (uiTheme === 'system' && mq.matches);
+      document.documentElement.classList.toggle('dark', isDark);
+      document.documentElement.dataset.theme = isDark ? 'dark' : 'light';
+    };
+    applyTheme();
+    try {
+      window.localStorage.setItem('aoostar_studio_ui_theme', uiTheme);
+    } catch {
+      // ignore storage write error
+    }
+    if (uiTheme === 'system') {
+      mq.addEventListener('change', applyTheme);
+      return () => mq.removeEventListener('change', applyTheme);
+    }
+  }, [uiTheme]);
 
   const handleCloseGuide = () => {
     setShowGuide(false);
@@ -133,8 +162,8 @@ export default function App() {
       const sourceScreens = overrideScreens ?? config.screens;
       const enabledScreens = sourceScreens.filter((s) => s.enabled);
       if (enabledScreens.length === 0 && !targetScreen) {
-        setPushFeedback('All screens are paused — activate a screen first');
-        window.setTimeout(() => setPushFeedback(null), 3200);
+        setPushFeedback({ok: false, text: 'All screens are paused — activate a screen first'});
+        window.setTimeout(() => setPushFeedback(null), 3600);
         return;
       }
 
@@ -153,7 +182,8 @@ export default function App() {
           telemetry,
           haEntities,
           exposedEntities,
-          config.dockerIcons
+          config.dockerIcons,
+          config.hardware.rotation
         );
         const res = await fetch('/api/hardware/deploy', {
           method: 'POST',
@@ -174,18 +204,43 @@ export default function App() {
             ...prev,
             hardwareDeploy: data.hardwareDeploy,
           }));
-          setPushFeedback(
-            data.meta.deliveryMode === 'usb-serial'
-              ? `Deployed ${deployList.length} screen${deployList.length > 1 ? 's' : ''} to ${data.meta.devicePath}`
-              : `Deployed ${deployList.length} screen${deployList.length > 1 ? 's' : ''} (auto-updating)`
-          );
-          window.setTimeout(() => setPushFeedback(null), 3600);
+          if (data.meta.lastError) {
+            setPushFeedback({
+              ok: false,
+              text: data.meta.lastError,
+            });
+          } else if (data.meta.deliveryMode === 'usb-serial') {
+            setPushFeedback({
+              ok: true,
+              text: `Pushed ${data.meta.chunksSent}/${data.meta.totalChunks} chunks to ${data.meta.devicePath}`,
+            });
+          } else {
+            setPushFeedback({
+              ok: true,
+              text: `Deployed ${deployList.length} screen${deployList.length > 1 ? 's' : ''} (buffer updated)`,
+            });
+          }
+          window.setTimeout(() => setPushFeedback(null), 4800);
+        } else {
+          setPushFeedback({ok: false, text: `Push failed (HTTP ${res.status})`});
+          window.setTimeout(() => setPushFeedback(null), 4200);
         }
+      } catch {
+        setPushFeedback({ok: false, text: 'Push request failed'});
+        window.setTimeout(() => setPushFeedback(null), 4200);
       } finally {
         setPushing(false);
       }
     },
-    [config.screens, config.activeScreenId, config.dockerIcons, telemetry, haEntities, exposedEntities]
+    [
+      config.screens,
+      config.activeScreenId,
+      config.dockerIcons,
+      config.hardware.rotation,
+      telemetry,
+      haEntities,
+      exposedEntities,
+    ]
   );
 
   const getUnsavedScreens = useCallback(() => {
@@ -215,7 +270,7 @@ export default function App() {
   const handlePushButtonClick = () => {
     const enabledScreens = config.screens.filter((s) => s.enabled);
     if (enabledScreens.length === 0) {
-      setPushFeedback('All screens are paused — activate a screen first');
+      setPushFeedback({ok: false, text: 'All screens are paused — activate a screen first'});
       window.setTimeout(() => setPushFeedback(null), 3200);
       return;
     }
@@ -284,12 +339,12 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0B0E14] text-[#E6EDF3] flex flex-col">
+    <div className="min-h-screen bg-slate-100 text-slate-900 dark:bg-[#0B0E14] dark:text-[#E6EDF3] flex flex-col transition-colors">
       {/* 3-Zone Top Bar */}
-      <header className="h-[57px] border-b border-[#1F2937] bg-[#0F131C] px-6 flex items-center justify-between gap-6 shrink-0">
+      <header className="h-[57px] border-b border-slate-200 dark:border-[#1F2937] bg-white dark:bg-[#0F131C] px-6 flex items-center justify-between gap-6 shrink-0">
         <button
           onClick={() => handleSelectTab('screens')}
-          className="text-base font-display font-bold tracking-tight text-slate-100 whitespace-nowrap shrink-0 text-left"
+          className="text-base font-display font-bold tracking-tight text-slate-900 dark:text-slate-100 whitespace-nowrap shrink-0 text-left"
         >
           Aoostar Display Studio
         </button>
@@ -303,8 +358,8 @@ export default function App() {
                 onClick={() => handleSelectTab(tab.id)}
                 className={`py-4 border-b-2 transition-colors whitespace-nowrap shrink-0 ${
                   active
-                    ? 'border-amber-500 text-slate-100'
-                    : 'border-transparent text-slate-400 hover:text-slate-200'
+                    ? 'border-amber-500 text-slate-900 dark:text-slate-100'
+                    : 'border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
                 }`}
               >
                 {tab.label}
@@ -315,11 +370,19 @@ export default function App() {
 
         <div className="flex items-center gap-3 shrink-0">
           {pushFeedback && (
-            <span className="hidden xl:inline text-xs font-mono text-emerald-400 whitespace-nowrap">
-              {pushFeedback}
+            <span
+              className={`hidden xl:inline text-xs font-mono whitespace-nowrap max-w-[340px] truncate ${
+                pushFeedback.ok
+                  ? 'text-emerald-600 dark:text-emerald-400'
+                  : 'text-amber-700 dark:text-amber-400'
+              }`}
+              title={pushFeedback.text}
+            >
+              {pushFeedback.text}
             </span>
           )}
           <button
+            data-guide="push-screen-btn"
             onClick={handlePushButtonClick}
             disabled={pushing}
             className="px-4 py-1.5 text-xs font-semibold rounded bg-amber-500 text-slate-950 hover:bg-amber-400 disabled:opacity-50 transition-colors whitespace-nowrap shrink-0"
@@ -330,15 +393,15 @@ export default function App() {
       </header>
 
       {/* Mobile Nav */}
-      <div className="flex md:hidden border-b border-[#1F2937] bg-[#0F131C] px-4 overflow-x-auto gap-4">
+      <div className="flex md:hidden border-b border-slate-200 dark:border-[#1F2937] bg-white dark:bg-[#0F131C] px-4 overflow-x-auto gap-4">
         {NAV_TABS.map((tab) => (
           <button
             key={tab.id}
             onClick={() => handleSelectTab(tab.id)}
             className={`py-2.5 text-xs font-medium border-b-2 whitespace-nowrap shrink-0 ${
               activeTab === tab.id
-                ? 'border-amber-500 text-slate-100'
-                : 'border-transparent text-slate-400'
+                ? 'border-amber-500 text-slate-900 dark:text-slate-100'
+                : 'border-transparent text-slate-500 dark:text-slate-400'
             }`}
           >
             {tab.label}
@@ -393,26 +456,36 @@ export default function App() {
           />
         )}
 
-        {activeTab === 'info' && <InfoView onOpenGuide={() => setShowGuide(true)} />}
+        {activeTab === 'info' && (
+          <InfoView
+            onOpenGuide={() => setShowGuide(true)}
+            uiTheme={uiTheme}
+            onChangeUiTheme={setUiTheme}
+          />
+        )}
       </div>
 
-      <QuickGuideModal open={showGuide} onClose={handleCloseGuide} />
+      <QuickGuideModal
+        open={showGuide}
+        onClose={handleCloseGuide}
+        onNavigateTab={(tab) => setActiveTab(tab)}
+      />
 
       {/* Unsaved Screen Prompt (Tab Switch or Push to Screen) */}
       {pendingSavePrompt && (
         <div
           onClick={() => setPendingSavePrompt(null)}
-          className="fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 bg-slate-950/70 flex items-center justify-center p-4"
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-md rounded-xl border border-[#263042] bg-[#0F131C] p-6 space-y-4 shadow-2xl"
+            className="w-full max-w-md rounded-xl border border-slate-200 dark:border-[#263042] bg-white dark:bg-[#0F131C] p-6 space-y-4 shadow-2xl"
           >
-            <div className="pb-3 border-b border-[#1F2937]">
-              <h2 className="text-base font-display font-semibold text-slate-100">
+            <div className="pb-3 border-b border-slate-200 dark:border-[#1F2937]">
+              <h2 className="text-base font-display font-semibold text-slate-900 dark:text-slate-100">
                 Save Unsaved Screen{pendingSavePrompt.screens.length > 1 ? 's' : ''}?
               </h2>
-              <p className="text-xs text-slate-400 mt-1">
+              <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
                 {pendingSavePrompt.kind === 'push'
                   ? 'You have unsaved screen changes. Save to your Saved Screens library before pushing to the hardware display?'
                   : 'You have unsaved screen changes on the Screens page. Save to your Saved Screens library before switching tabs?'}
@@ -420,17 +493,17 @@ export default function App() {
             </div>
 
             <div>
-              <label className="block text-[11px] font-medium text-slate-400 mb-1">
+              <label className="block text-[11px] font-medium text-slate-600 dark:text-slate-400 mb-1">
                 Saved Screen Name
               </label>
               <input
                 type="text"
                 value={promptName}
                 onChange={(e) => setPromptName(e.target.value)}
-                className="w-full px-3 py-2 rounded bg-[#0B0E14] border border-[#263042] text-xs text-slate-100 focus:outline-none focus:border-amber-500"
+                className="w-full px-3 py-2 rounded bg-slate-50 dark:bg-[#0B0E14] border border-slate-300 dark:border-[#263042] text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:border-amber-500"
               />
               {pendingSavePrompt.screens.length > 1 && (
-                <p className="text-[11px] text-slate-400 mt-1.5">
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1.5">
                   Also saving:{' '}
                   {pendingSavePrompt.screens
                     .slice(1)
@@ -443,13 +516,13 @@ export default function App() {
             <div className="flex flex-wrap items-center justify-end gap-2 pt-2">
               <button
                 onClick={() => setPendingSavePrompt(null)}
-                className="px-3 py-1.5 rounded border border-[#263042] bg-[#141A26] text-xs text-slate-300 hover:text-white"
+                className="px-3 py-1.5 rounded border border-slate-300 dark:border-[#263042] bg-slate-100 dark:bg-[#141A26] text-xs text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white"
               >
                 Cancel
               </button>
               <button
                 onClick={handleContinueWithoutSaving}
-                className="px-3 py-1.5 rounded border border-[#263042] bg-[#121824] text-xs text-slate-200 hover:border-slate-500"
+                className="px-3 py-1.5 rounded border border-slate-300 dark:border-[#263042] bg-slate-50 dark:bg-[#121824] text-xs text-slate-800 dark:text-slate-200 hover:border-slate-400 dark:hover:border-slate-500"
               >
                 {pendingSavePrompt.kind === 'push' ? 'Push Without Saving' : 'Continue Without Saving'}
               </button>

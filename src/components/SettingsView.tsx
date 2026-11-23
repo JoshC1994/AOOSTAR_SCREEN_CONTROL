@@ -1,5 +1,5 @@
 import {useEffect, useRef, useState} from 'react';
-import {Clock, Container, Moon, RefreshCw, Sun, Trash2, Upload, Usb} from 'lucide-react';
+import {AlertTriangle, Clock, Container, Moon, RefreshCw, Sun, Trash2, Upload, Usb} from 'lucide-react';
 import {PRESET_BACKGROUNDS} from '../presets.ts';
 import type {DetectedUsbDevice, LastFrameMeta, StudioConfig, TelemetrySnapshot} from '../types.ts';
 
@@ -107,33 +107,35 @@ export function SettingsView({config, telemetry, lastFrame, onUpdateConfig}: Set
 
   return (
     <div className="max-w-[1280px] mx-auto p-6 space-y-6">
-      <div className="rounded-lg border border-[#1F2937] bg-[#0F131C] p-5">
-        <h1 className="text-lg font-display font-semibold text-slate-100">Display &amp; Hardware Settings</h1>
-        <p className="text-xs text-slate-400 mt-1">
+      <div className="rounded-lg border border-slate-200 dark:border-[#1F2937] bg-white dark:bg-[#0F131C] p-5 shadow-xs dark:shadow-none">
+        <h1 className="text-lg font-display font-semibold text-slate-900 dark:text-slate-100">
+          Display &amp; Hardware Settings
+        </h1>
+        <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
           Configure screen cycle times, live refresh cadence, panel brightness, sleep hours, and Docker container icons.
         </p>
       </div>
 
       {/* Section 1: Display Times & Refresh */}
-      <section className="rounded-lg border border-[#1F2937] bg-[#0F131C] p-5 space-y-5">
-        <div className="flex flex-wrap items-center justify-between gap-4 pb-3 border-b border-[#1F2937]">
+      <section className="rounded-lg border border-slate-200 dark:border-[#1F2937] bg-white dark:bg-[#0F131C] p-5 space-y-5 shadow-xs dark:shadow-none">
+        <div className="flex flex-wrap items-center justify-between gap-4 pb-3 border-b border-slate-200 dark:border-[#1F2937]">
           <div>
-            <h2 className="text-base font-display font-semibold text-slate-100 flex items-center gap-2">
-              <Clock className="w-4 h-4 text-amber-400" />
+            <h2 className="text-base font-display font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+              <Clock className="w-4 h-4 text-amber-600 dark:text-amber-400" />
               Screen Display Times &amp; Polling
             </h2>
-            <p className="text-xs text-slate-400 mt-0.5">
+            <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
               Control how long each screen stays visible and how often telemetry pushes to the LCD.
             </p>
           </div>
 
           <div className="flex items-center gap-2">
-            <span className="text-[11px] text-slate-400">Set all screens:</span>
+            <span className="text-[11px] text-slate-500 dark:text-slate-400">Set all screens:</span>
             {QUICK_SCREEN_SECONDS.map((sec) => (
               <button
                 key={sec}
                 onClick={() => applyDurationToAllScreens(sec)}
-                className="px-2.5 py-1 rounded border border-[#263042] bg-[#141A26] text-xs font-mono text-slate-200 hover:border-amber-500/60 transition-colors"
+                className="px-2.5 py-1 rounded border border-slate-300 dark:border-[#263042] bg-slate-100 dark:bg-[#141A26] text-xs font-mono text-slate-800 dark:text-slate-200 hover:border-amber-500/60 transition-colors"
               >
                 {sec}s
               </button>
@@ -142,9 +144,9 @@ export function SettingsView({config, telemetry, lastFrame, onUpdateConfig}: Set
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <label className="flex items-center justify-between px-3.5 py-2.5 rounded border border-[#1F2937] bg-[#0B0E14] cursor-pointer">
+          <label className="flex items-center justify-between px-3.5 py-2.5 rounded border border-slate-200 dark:border-[#1F2937] bg-slate-50 dark:bg-[#0B0E14] cursor-pointer">
             <div>
-              <div className="text-xs font-medium text-slate-200">Auto-Rotate Screens</div>
+              <div className="text-xs font-medium text-slate-800 dark:text-slate-200">Auto-Rotate Screens</div>
               <div className="text-[11px] text-slate-500">Cycle through enabled screens</div>
             </div>
             <input
@@ -156,7 +158,7 @@ export function SettingsView({config, telemetry, lastFrame, onUpdateConfig}: Set
           </label>
 
           <div>
-            <label className="block text-[11px] font-medium text-slate-400 mb-1">
+            <label className="block text-[11px] font-medium text-slate-600 dark:text-slate-400 mb-1">
               Live Telemetry Refresh Rate
             </label>
             <select
@@ -167,7 +169,7 @@ export function SettingsView({config, telemetry, lastFrame, onUpdateConfig}: Set
                   hardware: {...prev.hardware, pollIntervalMs: Number(e.target.value)},
                 }))
               }
-              className="w-full px-3 py-2 rounded bg-[#0B0E14] border border-[#263042] text-xs text-slate-100"
+              className="w-full px-3 py-2 rounded bg-slate-50 dark:bg-[#0B0E14] border border-slate-300 dark:border-[#263042] text-xs text-slate-900 dark:text-slate-100"
             >
               {POLL_OPTIONS.map((opt) => (
                 <option key={opt.ms} value={opt.ms}>
@@ -178,10 +180,10 @@ export function SettingsView({config, telemetry, lastFrame, onUpdateConfig}: Set
           </div>
 
           <div>
-            <label className="block text-[11px] font-medium text-slate-400 mb-1">
+            <label className="block text-[11px] font-medium text-slate-600 dark:text-slate-400 mb-1">
               USB Auto-Push Interval ({config.hardware.pushIntervalSec}s)
             </label>
-            <div className="flex items-center gap-3 px-3 py-2 rounded bg-[#0B0E14] border border-[#263042]">
+            <div className="flex items-center gap-3 px-3 py-2 rounded bg-slate-50 dark:bg-[#0B0E14] border border-slate-300 dark:border-[#263042]">
               <input
                 type="checkbox"
                 checked={config.hardware.autoPushEnabled}
@@ -205,16 +207,16 @@ export function SettingsView({config, telemetry, lastFrame, onUpdateConfig}: Set
                     hardware: {...prev.hardware, pushIntervalSec: Math.max(1, Number(e.target.value))},
                   }))
                 }
-                className="w-20 bg-transparent text-xs font-mono text-slate-100 focus:outline-none"
+                className="w-20 bg-transparent text-xs font-mono text-slate-900 dark:text-slate-100 focus:outline-none"
               />
               <span className="text-[11px] text-slate-500">sec</span>
             </div>
           </div>
         </div>
 
-        <div className="overflow-x-auto border border-[#1F2937] rounded-md">
+        <div className="overflow-x-auto border border-slate-200 dark:border-[#1F2937] rounded-md">
           <table className="w-full text-left text-xs">
-            <thead className="bg-[#0B0E14] text-slate-400 border-b border-[#1F2937]">
+            <thead className="bg-slate-50 dark:bg-[#0B0E14] text-slate-600 dark:text-slate-400 border-b border-slate-200 dark:border-[#1F2937]">
               <tr>
                 <th className="py-2.5 px-4 font-medium">Screen Name</th>
                 <th className="py-2.5 px-4 font-medium text-center">Included in Rotation</th>
@@ -222,10 +224,10 @@ export function SettingsView({config, telemetry, lastFrame, onUpdateConfig}: Set
                 <th className="py-2.5 px-4 font-medium">Transition</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#1A2130]">
+            <tbody className="divide-y divide-slate-200 dark:divide-[#1A2130]">
               {config.screens.map((scr) => (
-                <tr key={scr.id} className="hover:bg-[#141A26]">
-                  <td className="py-2.5 px-4 font-medium text-slate-200">{scr.name}</td>
+                <tr key={scr.id} className="hover:bg-slate-50 dark:hover:bg-[#141A26]">
+                  <td className="py-2.5 px-4 font-medium text-slate-800 dark:text-slate-200">{scr.name}</td>
                   <td className="py-2.5 px-4 text-center">
                     <input
                       type="checkbox"
@@ -258,7 +260,7 @@ export function SettingsView({config, telemetry, lastFrame, onUpdateConfig}: Set
                             ),
                           }))
                         }
-                        className="w-20 px-2.5 py-1 rounded bg-[#0B0E14] border border-[#263042] font-mono text-xs text-slate-100 tabular-nums"
+                        className="w-20 px-2.5 py-1 rounded bg-slate-50 dark:bg-[#0B0E14] border border-slate-300 dark:border-[#263042] font-mono text-xs text-slate-900 dark:text-slate-100 tabular-nums"
                       />
                       <span className="text-[11px] text-slate-500">sec</span>
                     </div>
@@ -276,7 +278,7 @@ export function SettingsView({config, telemetry, lastFrame, onUpdateConfig}: Set
                           ),
                         }))
                       }
-                      className="px-2.5 py-1 rounded bg-[#0B0E14] border border-[#263042] text-xs text-slate-200"
+                      className="px-2.5 py-1 rounded bg-slate-50 dark:bg-[#0B0E14] border border-slate-300 dark:border-[#263042] text-xs text-slate-800 dark:text-slate-200"
                     >
                       <option value="fade">Fade</option>
                       <option value="slide">Slide</option>
@@ -291,13 +293,13 @@ export function SettingsView({config, telemetry, lastFrame, onUpdateConfig}: Set
       </section>
 
       {/* Section 2: Brightness, Orientation & Sleep Schedule */}
-      <section className="rounded-lg border border-[#1F2937] bg-[#0F131C] p-5 space-y-5">
-        <div className="pb-3 border-b border-[#1F2937]">
-          <h2 className="text-base font-display font-semibold text-slate-100 flex items-center gap-2">
-            <Sun className="w-4 h-4 text-amber-400" />
+      <section className="rounded-lg border border-slate-200 dark:border-[#1F2937] bg-white dark:bg-[#0F131C] p-5 space-y-5 shadow-xs dark:shadow-none">
+        <div className="pb-3 border-b border-slate-200 dark:border-[#1F2937]">
+          <h2 className="text-base font-display font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+            <Sun className="w-4 h-4 text-amber-600 dark:text-amber-400" />
             Brightness, Orientation &amp; Sleep Schedule
           </h2>
-          <p className="text-xs text-slate-400 mt-0.5">
+          <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
             Set daytime LCD brightness, physical display rotation, and automatic overnight blanking or dimming.
           </p>
         </div>
@@ -305,8 +307,10 @@ export function SettingsView({config, telemetry, lastFrame, onUpdateConfig}: Set
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-medium text-slate-300">LCD Backlight Brightness</label>
-              <span className="font-mono text-xs text-amber-300 tabular-nums">
+              <label className="text-xs font-medium text-slate-700 dark:text-slate-300">
+                LCD Backlight Brightness
+              </label>
+              <span className="font-mono text-xs text-amber-600 dark:text-amber-300 tabular-nums">
                 {config.hardware.brightness}%
               </span>
             </div>
@@ -335,8 +339,8 @@ export function SettingsView({config, telemetry, lastFrame, onUpdateConfig}: Set
                   }
                   className={`py-1.5 rounded text-xs font-medium border transition-colors ${
                     config.hardware.brightness === preset.value
-                      ? 'bg-amber-500/20 border-amber-500/60 text-amber-300'
-                      : 'bg-[#121824] border-[#263042] text-slate-300 hover:border-slate-500'
+                      ? 'bg-amber-500/20 border-amber-500/60 text-amber-700 dark:text-amber-300'
+                      : 'bg-slate-100 dark:bg-[#121824] border-slate-300 dark:border-[#263042] text-slate-700 dark:text-slate-300 hover:border-slate-400 dark:hover:border-slate-500'
                   }`}
                 >
                   {preset.label}
@@ -347,7 +351,9 @@ export function SettingsView({config, telemetry, lastFrame, onUpdateConfig}: Set
 
           <div className="space-y-4">
             <div>
-              <label className="block text-xs font-medium text-slate-300 mb-1.5">Display Orientation</label>
+              <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5">
+                Display Orientation
+              </label>
               <select
                 value={config.hardware.rotation}
                 onChange={(e) =>
@@ -356,17 +362,17 @@ export function SettingsView({config, telemetry, lastFrame, onUpdateConfig}: Set
                     hardware: {...prev.hardware, rotation: Number(e.target.value) as 0 | 90 | 180 | 270},
                   }))
                 }
-                className="w-full px-3 py-2 rounded bg-[#0B0E14] border border-[#263042] text-xs text-slate-100"
+                className="w-full px-3 py-2 rounded bg-slate-50 dark:bg-[#0B0E14] border border-slate-300 dark:border-[#263042] text-xs text-slate-900 dark:text-slate-100"
               >
                 <option value={0}>0° Standard Landscape (960×376)</option>
                 <option value={180}>180° Flipped Landscape</option>
               </select>
             </div>
 
-            <div className="p-3.5 rounded border border-[#1F2937] bg-[#0B0E14] space-y-3">
+            <div className="p-3.5 rounded border border-slate-200 dark:border-[#1F2937] bg-slate-50 dark:bg-[#0B0E14] space-y-3">
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-xs font-medium text-slate-200">
-                  <Moon className="w-3.5 h-3.5 text-sky-400" />
+                <div className="flex items-center gap-2 text-xs font-medium text-slate-800 dark:text-slate-200">
+                  <Moon className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
                   Night Sleep Schedule
                 </div>
                 <input
@@ -384,7 +390,7 @@ export function SettingsView({config, telemetry, lastFrame, onUpdateConfig}: Set
 
               <div className="grid grid-cols-3 gap-2 items-end">
                 <div>
-                  <label className="block text-[11px] text-slate-400 mb-1">Sleep At</label>
+                  <label className="block text-[11px] text-slate-500 dark:text-slate-400 mb-1">Sleep At</label>
                   <input
                     type="time"
                     value={config.hardware.sleepStart}
@@ -394,11 +400,11 @@ export function SettingsView({config, telemetry, lastFrame, onUpdateConfig}: Set
                         hardware: {...prev.hardware, sleepStart: e.target.value},
                       }))
                     }
-                    className="w-full px-2.5 py-1.5 rounded bg-[#121824] border border-[#263042] text-xs font-mono text-slate-200"
+                    className="w-full px-2.5 py-1.5 rounded bg-white dark:bg-[#121824] border border-slate-300 dark:border-[#263042] text-xs font-mono text-slate-800 dark:text-slate-200"
                   />
                 </div>
                 <div>
-                  <label className="block text-[11px] text-slate-400 mb-1">Wake At</label>
+                  <label className="block text-[11px] text-slate-500 dark:text-slate-400 mb-1">Wake At</label>
                   <input
                     type="time"
                     value={config.hardware.sleepEnd}
@@ -408,11 +414,11 @@ export function SettingsView({config, telemetry, lastFrame, onUpdateConfig}: Set
                         hardware: {...prev.hardware, sleepEnd: e.target.value},
                       }))
                     }
-                    className="w-full px-2.5 py-1.5 rounded bg-[#121824] border border-[#263042] text-xs font-mono text-slate-200"
+                    className="w-full px-2.5 py-1.5 rounded bg-white dark:bg-[#121824] border border-slate-300 dark:border-[#263042] text-xs font-mono text-slate-800 dark:text-slate-200"
                   />
                 </div>
                 <div>
-                  <label className="block text-[11px] text-slate-400 mb-1">During Sleep</label>
+                  <label className="block text-[11px] text-slate-500 dark:text-slate-400 mb-1">During Sleep</label>
                   <select
                     value={config.hardware.sleepMode ?? 'off'}
                     onChange={(e) =>
@@ -421,7 +427,7 @@ export function SettingsView({config, telemetry, lastFrame, onUpdateConfig}: Set
                         hardware: {...prev.hardware, sleepMode: e.target.value as 'off' | 'dim'},
                       }))
                     }
-                    className="w-full px-2 py-1.5 rounded bg-[#121824] border border-[#263042] text-xs text-slate-200"
+                    className="w-full px-2 py-1.5 rounded bg-white dark:bg-[#121824] border border-slate-300 dark:border-[#263042] text-xs text-slate-800 dark:text-slate-200"
                   >
                     <option value="off">Backlight Off</option>
                     <option value="dim">Dim to 5%</option>
@@ -434,14 +440,14 @@ export function SettingsView({config, telemetry, lastFrame, onUpdateConfig}: Set
       </section>
 
       {/* Section 3: Docker Container Images */}
-      <section className="rounded-lg border border-[#1F2937] bg-[#0F131C] p-5 space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-4 pb-3 border-b border-[#1F2937]">
+      <section className="rounded-lg border border-slate-200 dark:border-[#1F2937] bg-white dark:bg-[#0F131C] p-5 space-y-4 shadow-xs dark:shadow-none">
+        <div className="flex flex-wrap items-center justify-between gap-4 pb-3 border-b border-slate-200 dark:border-[#1F2937]">
           <div>
-            <h2 className="text-base font-display font-semibold text-slate-100 flex items-center gap-2">
-              <Container className="w-4 h-4 text-sky-400" />
+            <h2 className="text-base font-display font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+              <Container className="w-4 h-4 text-sky-600 dark:text-sky-400" />
               Docker Container Images
             </h2>
-            <p className="text-xs text-slate-400 mt-0.5">
+            <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
               Assign custom icons or images to running Docker containers so they appear inside the Docker Containers block on your LCD.
             </p>
           </div>
@@ -452,7 +458,7 @@ export function SettingsView({config, telemetry, lastFrame, onUpdateConfig}: Set
               value={newContainerName}
               onChange={(e) => setNewContainerName(e.target.value)}
               placeholder="Add container name (e.g. plex)"
-              className="px-3 py-1.5 rounded bg-[#0B0E14] border border-[#263042] text-xs text-slate-100 w-48"
+              className="px-3 py-1.5 rounded bg-slate-50 dark:bg-[#0B0E14] border border-slate-300 dark:border-[#263042] text-xs text-slate-900 dark:text-slate-100 w-48"
             />
             <button
               onClick={() => {
@@ -467,7 +473,7 @@ export function SettingsView({config, telemetry, lastFrame, onUpdateConfig}: Set
                 }));
                 setNewContainerName('');
               }}
-              className="px-3 py-1.5 rounded bg-[#161E2E] border border-[#263042] text-xs text-slate-200 hover:border-amber-500/60"
+              className="px-3 py-1.5 rounded bg-slate-100 dark:bg-[#161E2E] border border-slate-300 dark:border-[#263042] text-xs text-slate-800 dark:text-slate-200 hover:border-amber-500/60"
             >
               Add Mapping
             </button>
@@ -487,9 +493,9 @@ export function SettingsView({config, telemetry, lastFrame, onUpdateConfig}: Set
           }}
         />
 
-        <div className="overflow-x-auto border border-[#1F2937] rounded-md">
+        <div className="overflow-x-auto border border-slate-200 dark:border-[#1F2937] rounded-md">
           <table className="w-full text-left text-xs">
-            <thead className="bg-[#0B0E14] text-slate-400 border-b border-[#1F2937]">
+            <thead className="bg-slate-50 dark:bg-[#0B0E14] text-slate-600 dark:text-slate-400 border-b border-slate-200 dark:border-[#1F2937]">
               <tr>
                 <th className="py-2.5 px-4 font-medium w-16">Preview</th>
                 <th className="py-2.5 px-4 font-medium">Container Name</th>
@@ -498,39 +504,39 @@ export function SettingsView({config, telemetry, lastFrame, onUpdateConfig}: Set
                 <th className="py-2.5 px-4 font-medium text-right">Upload / Clear</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#1A2130]">
+            <tbody className="divide-y divide-slate-200 dark:divide-[#1A2130]">
               {[
                 ...discoveredContainers.map((c) => ({name: c.name, state: c.state, image: c.image})),
                 ...customOnlyNames.map((name) => ({name, state: 'custom' as const, image: 'Manual mapping'})),
               ].map((row) => {
                 const assignedUrl = config.dockerIcons?.[row.name] ?? '';
                 return (
-                  <tr key={row.name} className="hover:bg-[#141A26]">
+                  <tr key={row.name} className="hover:bg-slate-50 dark:hover:bg-[#141A26]">
                     <td className="py-2 px-4">
                       {assignedUrl ? (
                         <img
                           src={assignedUrl}
                           alt={row.name}
                           referrerPolicy="no-referrer"
-                          className="w-7 h-7 rounded object-cover border border-[#263042] bg-black"
+                          className="w-7 h-7 rounded object-cover border border-slate-300 dark:border-[#263042] bg-black"
                         />
                       ) : (
-                        <div className="w-7 h-7 rounded border border-[#263042] bg-[#0B0E14] flex items-center justify-center font-mono text-[11px] font-semibold text-slate-400 uppercase">
+                        <div className="w-7 h-7 rounded border border-slate-300 dark:border-[#263042] bg-slate-100 dark:bg-[#0B0E14] flex items-center justify-center font-mono text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase">
                           {row.name.slice(0, 2)}
                         </div>
                       )}
                     </td>
                     <td className="py-2 px-4">
-                      <div className="font-mono font-medium text-slate-200">{row.name}</div>
+                      <div className="font-mono font-medium text-slate-800 dark:text-slate-200">{row.name}</div>
                       <div className="text-[11px] text-slate-500 truncate max-w-[220px]">{row.image}</div>
                     </td>
                     <td className="py-2 px-4">
                       <span
                         className={`text-xs font-mono ${
                           row.state === 'running'
-                            ? 'text-emerald-400'
+                            ? 'text-emerald-600 dark:text-emerald-400'
                             : row.state === 'custom'
-                              ? 'text-sky-400'
+                              ? 'text-sky-600 dark:text-sky-400'
                               : 'text-slate-500'
                         }`}
                       >
@@ -549,7 +555,7 @@ export function SettingsView({config, telemetry, lastFrame, onUpdateConfig}: Set
                             return {...prev, dockerIcons: next};
                           });
                         }}
-                        className="w-full max-w-[240px] px-2.5 py-1 rounded bg-[#0B0E14] border border-[#263042] text-xs text-slate-200"
+                        className="w-full max-w-[240px] px-2.5 py-1 rounded bg-slate-50 dark:bg-[#0B0E14] border border-slate-300 dark:border-[#263042] text-xs text-slate-800 dark:text-slate-200"
                       >
                         <option value="">Default Monogram</option>
                         {imageChoices.map((img) => (
@@ -567,9 +573,9 @@ export function SettingsView({config, telemetry, lastFrame, onUpdateConfig}: Set
                             dockerFileInputRef.current?.click();
                           }}
                           disabled={uploadingForDocker === row.name}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-[#161E2E] border border-[#263042] text-[11px] text-slate-200 hover:border-amber-500/60"
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-slate-100 dark:bg-[#161E2E] border border-slate-300 dark:border-[#263042] text-[11px] text-slate-800 dark:text-slate-200 hover:border-amber-500/60"
                         >
-                          <Upload className="w-3 h-3 text-amber-400" />
+                          <Upload className="w-3 h-3 text-amber-600 dark:text-amber-400" />
                           {uploadingForDocker === row.name ? 'Uploading...' : 'Upload'}
                         </button>
                         {assignedUrl && (
@@ -581,7 +587,7 @@ export function SettingsView({config, telemetry, lastFrame, onUpdateConfig}: Set
                                 return {...prev, dockerIcons: next};
                               })
                             }
-                            className="p-1.5 rounded border border-red-900/40 bg-red-950/20 text-red-300 hover:bg-red-900/40"
+                            className="p-1.5 rounded border border-red-300 dark:border-red-900/40 bg-red-50 dark:bg-red-950/20 text-red-700 dark:text-red-300 hover:bg-red-100 dark:hover:bg-red-900/40"
                             title="Clear image"
                           >
                             <Trash2 className="w-3 h-3" />
@@ -598,20 +604,23 @@ export function SettingsView({config, telemetry, lastFrame, onUpdateConfig}: Set
       </section>
 
       {/* Section 4: USB Display Hardware Port */}
-      <section className="rounded-lg border border-[#1F2937] bg-[#0F131C] p-5 space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-4 pb-3 border-b border-[#1F2937]">
+      <section
+        data-guide="settings-hardware"
+        className="rounded-lg border border-slate-200 dark:border-[#1F2937] bg-white dark:bg-[#0F131C] p-5 space-y-4 shadow-xs dark:shadow-none"
+      >
+        <div className="flex flex-wrap items-center justify-between gap-4 pb-3 border-b border-slate-200 dark:border-[#1F2937]">
           <div>
-            <h2 className="text-base font-display font-semibold text-slate-100 flex items-center gap-2">
-              <Usb className="w-4 h-4 text-amber-400" />
+            <h2 className="text-base font-display font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+              <Usb className="w-4 h-4 text-amber-600 dark:text-amber-400" />
               USB Serial Display Target
             </h2>
-            <p className="text-xs text-slate-400 mt-0.5">
-              Aoostar WTR MAX / GEM12+ PRO secondary LCD serial interface (VID 0x0416, PID 0x90A1).
+            <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
+              Aoostar WTR MAX / GEM12+ PRO secondary LCD serial interface (VID 0x0416, PID 0x90A1 · 1,500,000 baud · AA 55 AA 55 protocol).
             </p>
           </div>
           <button
             onClick={() => void scanHardware()}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded border border-[#263042] bg-[#141A26] text-xs text-slate-200 hover:bg-[#1C2436]"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded border border-slate-300 dark:border-[#263042] bg-slate-100 dark:bg-[#141A26] text-xs text-slate-800 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-[#1C2436]"
           >
             <RefreshCw className="w-3.5 h-3.5" />
             Scan USB Screen
@@ -620,7 +629,9 @@ export function SettingsView({config, telemetry, lastFrame, onUpdateConfig}: Set
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-2">
-            <label className="block text-[11px] font-medium text-slate-400">Serial Port Path</label>
+            <label className="block text-[11px] font-medium text-slate-600 dark:text-slate-400">
+              Serial Port Path
+            </label>
             <input
               type="text"
               value={config.hardware.devicePath}
@@ -630,34 +641,83 @@ export function SettingsView({config, telemetry, lastFrame, onUpdateConfig}: Set
                   hardware: {...prev.hardware, devicePath: e.target.value},
                 }))
               }
-              className="w-full px-3 py-1.5 rounded bg-[#0B0E14] border border-[#263042] text-xs font-mono text-slate-100"
+              className="w-full px-3 py-1.5 rounded bg-slate-50 dark:bg-[#0B0E14] border border-slate-300 dark:border-[#263042] text-xs font-mono text-slate-900 dark:text-slate-100"
             />
-            <div className="text-xs text-slate-400">
-              {devices.length > 0
-                ? `Detected: ${devices.map((d) => `${d.path} (${d.vendorId}:${d.productId})`).join(', ')}`
-                : 'No USB-UART display attached in browser preview. On Unraid, /dev/aoostar_lcd or /dev/ttyACM0 will appear.'}
-            </div>
+            {devices.length > 0 ? (
+              <div className="flex flex-wrap gap-1.5 pt-0.5">
+                {devices.map((d) => (
+                  <button
+                    key={d.path}
+                    type="button"
+                    onClick={() =>
+                      onUpdateConfig((prev) => ({
+                        ...prev,
+                        hardware: {...prev.hardware, devicePath: d.path},
+                      }))
+                    }
+                    className={`px-2 py-1 rounded border text-[11px] font-mono transition-colors ${
+                      config.hardware.devicePath === d.path
+                        ? 'border-amber-500 bg-amber-500/15 text-amber-700 dark:text-amber-300'
+                        : 'border-slate-300 dark:border-[#263042] bg-slate-50 dark:bg-[#0B0E14] text-slate-700 dark:text-slate-300 hover:border-amber-500/60'
+                    }`}
+                  >
+                    {d.path} ({d.vendorId}:{d.productId}
+                    {d.isAoostarMatch ? ' · Aoostar LCD' : ''}
+                    {!d.writable ? ' · RO' : ''})
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="text-xs text-slate-500 dark:text-slate-400">
+                No USB-UART display detected. On Unraid, verify <code className="font-mono">--device=/dev/ttyACM0</code> or container privileged mode is active.
+              </div>
+            )}
           </div>
 
-          <div className="p-3 rounded bg-[#0B0E14] border border-[#1F2937] text-xs space-y-1.5 font-mono">
-            <div className="flex justify-between">
-              <span className="text-slate-400">Deployed Playlist:</span>
-              <span className="text-emerald-400">
-                {config.hardwareDeploy?.screens?.length ?? 0} screen(s) · Auto-starts on boot
+          <div className="p-3 rounded bg-slate-50 dark:bg-[#0B0E14] border border-slate-200 dark:border-[#1F2937] text-xs space-y-1.5 font-mono">
+            <div className="flex justify-between gap-2">
+              <span className="text-slate-500 dark:text-slate-400">Transport Mode:</span>
+              <span
+                className={
+                  frameMeta?.deliveryMode === 'usb-serial'
+                    ? 'text-emerald-600 dark:text-emerald-400'
+                    : 'text-amber-700 dark:text-amber-400'
+                }
+              >
+                {frameMeta?.deliveryMode === 'usb-serial'
+                  ? `USB Serial (${frameMeta.devicePath})`
+                  : 'Virtual Buffer (No USB write)'}
               </span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-slate-400">Active on Hardware:</span>
-              <span className="text-slate-200">
+            <div className="flex justify-between gap-2">
+              <span className="text-slate-500 dark:text-slate-400">Active on Hardware:</span>
+              <span className="text-slate-800 dark:text-slate-200 truncate">
                 {config.hardwareDeploy?.currentScreenName ?? frameMeta?.screenName ?? 'Waiting'}
               </span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-slate-400">Last Checksum:</span>
-              <span className="text-amber-300">{frameMeta?.crc16Hex ?? 'Not pushed yet'}</span>
+            <div className="flex justify-between gap-2">
+              <span className="text-slate-500 dark:text-slate-400">Chunks / Display Ack:</span>
+              <span className="text-slate-800 dark:text-slate-200 tabular-nums">
+                {frameMeta?.chunksSent ?? 0} / {frameMeta?.totalChunks ?? 15360} ·{' '}
+                {frameMeta?.initAck ? 'ACK ("A")' : 'No ACK yet'}
+              </span>
+            </div>
+            <div className="flex justify-between gap-2">
+              <span className="text-slate-500 dark:text-slate-400">Last Checksum:</span>
+              <span className="text-amber-700 dark:text-amber-300">{frameMeta?.crc16Hex ?? 'Not pushed yet'}</span>
             </div>
           </div>
         </div>
+
+        {frameMeta?.lastError && (
+          <div className="p-3 rounded border border-amber-300 dark:border-amber-700/60 bg-amber-50 dark:bg-amber-950/30 text-xs text-amber-800 dark:text-amber-300 flex items-start gap-2">
+            <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+            <div>
+              <span className="font-semibold">Hardware Push Error: </span>
+              <span className="font-mono">{frameMeta.lastError}</span>
+            </div>
+          </div>
+        )}
       </section>
     </div>
   );

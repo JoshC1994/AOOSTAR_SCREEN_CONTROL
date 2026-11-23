@@ -1,16 +1,47 @@
 @import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
 
 @layer base {
   :root {
     --font-display: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
     --font-sans: 'Public Sans', system-ui, -apple-system, sans-serif;
     --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+
+    --ui-bg: #f1f5f9;
+    --ui-surface: #ffffff;
+    --ui-surface-alt: #f8fafc;
+    --ui-surface-subtle: #eef2f6;
+    --ui-stage: #e2e8f0;
+    --ui-border: #cbd5e1;
+    --ui-border-subtle: #e2e8f0;
+    --ui-text: #0f172a;
+    --ui-text-muted: #475569;
+    --ui-text-faint: #64748b;
+    --ui-scroll-track: #f1f5f9;
+    --ui-scroll-thumb: #cbd5e1;
+    --ui-scroll-thumb-hover: #94a3b8;
+  }
+
+  .dark {
+    --ui-bg: #0b0e14;
+    --ui-surface: #0f131c;
+    --ui-surface-alt: #121824;
+    --ui-surface-subtle: #141a26;
+    --ui-stage: #080b10;
+    --ui-border: #263042;
+    --ui-border-subtle: #1f2937;
+    --ui-text: #e6edf3;
+    --ui-text-muted: #94a3b8;
+    --ui-text-faint: #64748b;
+    --ui-scroll-track: #0b0e14;
+    --ui-scroll-thumb: #222938;
+    --ui-scroll-thumb-hover: #334155;
   }
 
   body {
     font-family: var(--font-sans);
-    background-color: #0b0e14;
-    color: #e6edf3;
+    background-color: var(--ui-bg);
+    color: var(--ui-text);
   }
 
   h1, h2, h3, h4, .font-display {
@@ -30,14 +61,14 @@
 }
 
 ::-webkit-scrollbar-track {
-  background: #0b0e14;
+  background: var(--ui-scroll-track);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #222938;
+  background: var(--ui-scroll-thumb);
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #334155;
+  background: var(--ui-scroll-thumb-hover);
 }

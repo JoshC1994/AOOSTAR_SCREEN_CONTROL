@@ -52,7 +52,8 @@ const runtimeState: DaemonRuntimeState = {
 export async function runHardwareDaemonTick(
   getConfig: () => StudioConfig,
   onConfigPatch?: (patch: Partial<HardwareDeployState>) => void,
-  overrideRgbaBase64?: string
+  overrideRgbaBase64?: string,
+  forceFull = false
 ): Promise<LastFrameMeta | null> {
   const cfg = getConfig();
   const playlist: LcdScreen[] = cfg.screens.filter((s) => s.enabled);
@@ -128,6 +129,7 @@ export async function runHardwareDaemonTick(
     screenName: activeScreen.name,
     devicePath: cfg.hardware.devicePath,
     brightness: effectiveBrightness,
+    forceFull,
   });
 
   runtimeState.activeIndex = idx;

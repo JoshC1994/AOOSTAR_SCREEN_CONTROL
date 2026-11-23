@@ -11,6 +11,7 @@ import type {
   EntityOverride,
   ExposedEntity,
   FanSensorInfo,
+  GpuInfo,
   HomeAssistantEntity,
   NetworkInterfaceInfo,
   ServerTaskInfo,
@@ -33,8 +34,36 @@ interface NetSample {
   timestamp: number;
 }
 
+interface RaplSample {
+  energyUj: number;
+  timestamp: number;
+}
+
+interface IntelRc6Sample {
+  rc6Ms: number;
+  timestamp: number;
+}
+
 let prevCpuSample: CpuSample | null = null;
 let prevNetSample: NetSample | null = null;
+let prevRaplSample: RaplSample | null = null;
+const prevIntelRc6Map = new Map<string, IntelRc6Sample>();
+let nvidiaSmiAvailable: boolean | null = null;
+
+// Seed initial CPU sample immediately so the first /api/telemetry call has a real delta
+try {
+  const initStat = fs.readFileSync('/proc/stat', 'utf8');
+  const initLine = initStat.split('\n')[0];
+  const parts = initLine.trim().split(/\s+/).slice(1).map(Number);
+  if (parts.length >= 4) {
+    prevCpuSample = {
+      idle: (parts[3] || 0) + (parts[4] || 0),
+      total: parts.reduce((acc, v) => acc + (Number.isFinite(v) ? v : 0), 0),
+    };
+  }
+} catch {
+  // ignore
+}
 
 const historyBuffer = {
   timestamps: [] as string[],
@@ -225,54 +254,449 @@ function readLocalNetworkStats(): {rxMbps: number; txMbps: number; interfaces: N
   return {rxMbps, txMbps, interfaces: ifaces};
 }
 
-function readLocalHwmon(): {temps: TempSensorInfo[]; fans: FanSensorInfo[]} {
-  const temps: TempSensorInfo[] = [];
+interface DetailedTempSensor extends TempSensorInfo {
+  chipName: string;
+}
+
+function readLocalCpuDetails(): {model: string; cores: number; freqMhz: number | null} {
+  let model = os.cpus()[0]?.model?.trim() || 'x86_64 Processor';
+  let cores = os.cpus().length;
+  let freqMhz: number | null = null;
+
+  try {
+    const cpuinfo = fs.readFileSync('/proc/cpuinfo', 'utf8');
+    const freqs: number[] = [];
+    let procCount = 0;
+    for (const line of cpuinfo.split('\n')) {
+      const mModel = line.match(/^model name\s*:\s*(.+)$/i);
+      if (mModel && mModel[1].trim()) {
+        model = mModel[1].trim().replace(/\s+/g, ' ');
+      }
+      const mFreq = line.match(/^cpu MHz\s*:\s*([\d.]+)/i);
+      if (mFreq) {
+        const val = Number(mFreq[1]);
+        if (Number.isFinite(val) && val > 0) freqs.push(val);
+      }
+      if (/^processor\s*:/i.test(line)) {
+        procCount++;
+      }
+    }
+    if (procCount > 0) cores = procCount;
+    if (freqs.length > 0) {
+      freqMhz = Math.round(freqs.reduce((a, b) => a + b, 0) / freqs.length);
+    }
+  } catch {
+    // fallback to os.cpus()
+  }
+
+  // Prefer cpufreq scaling_cur_freq when exposed
+  try {
+    const cpufreqBase = '/sys/devices/system/cpu/cpufreq';
+    if (fs.existsSync(cpufreqBase)) {
+      const policies = fs.readdirSync(cpufreqBase).filter((d) => d.startsWith('policy'));
+      const policyFreqs: number[] = [];
+      for (const p of policies) {
+        const pFile = `${cpufreqBase}/${p}/scaling_cur_freq`;
+        if (fs.existsSync(pFile)) {
+          const khz = Number(fs.readFileSync(pFile, 'utf8').trim());
+          if (Number.isFinite(khz) && khz > 0) policyFreqs.push(khz / 1000);
+        }
+      }
+      if (policyFreqs.length > 0) {
+        freqMhz = Math.round(policyFreqs.reduce((a, b) => a + b, 0) / policyFreqs.length);
+      }
+    }
+    if (freqMhz === null) {
+      const cpu0Freq = '/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq';
+      if (fs.existsSync(cpu0Freq)) {
+        const khz = Number(fs.readFileSync(cpu0Freq, 'utf8').trim());
+        if (Number.isFinite(khz) && khz > 0) freqMhz = Math.round(khz / 1000);
+      }
+    }
+  } catch {
+    // ignore
+  }
+
+  return {model, cores, freqMhz};
+}
+
+function readLocalHwmon(): {
+  temps: DetailedTempSensor[];
+  fans: FanSensorInfo[];
+  cpuTempC: number | null;
+  hwmonCpuPowerW: number | null;
+} {
+  const temps: DetailedTempSensor[] = [];
   const fans: FanSensorInfo[] = [];
+  let hwmonCpuPowerW: number | null = null;
+
   try {
     const base = '/sys/class/hwmon';
-    if (!fs.existsSync(base)) return {temps, fans};
-    for (const dir of fs.readdirSync(base)) {
-      const fullDir = `${base}/${dir}`;
-      let chipName = dir;
-      try {
-        chipName = fs.readFileSync(`${fullDir}/name`, 'utf8').trim();
-      } catch {
-        // ignore
-      }
-      const files = fs.readdirSync(fullDir);
-      for (const file of files) {
-        if (/^temp\d+_input$/.test(file)) {
-          const idx = file.match(/\d+/)?.[0] || '1';
-          const milli = Number(fs.readFileSync(`${fullDir}/${file}`, 'utf8').trim());
-          let label = `${chipName} temp${idx}`;
-          try {
-            label = fs.readFileSync(`${fullDir}/temp${idx}_label`, 'utf8').trim();
-          } catch {
-            // ignore
-          }
-          temps.push({
-            id: `${dir}-temp${idx}`,
-            label,
-            tempC: Number((milli / 1000).toFixed(1)),
-            highC: 85,
-          });
+    if (fs.existsSync(base)) {
+      for (const dir of fs.readdirSync(base)) {
+        const fullDir = `${base}/${dir}`;
+        let chipName = dir;
+        try {
+          chipName = fs.readFileSync(`${fullDir}/name`, 'utf8').trim().toLowerCase();
+        } catch {
+          // ignore
         }
-        if (/^fan\d+_input$/.test(file)) {
-          const idx = file.match(/\d+/)?.[0] || '1';
-          const rpm = Number(fs.readFileSync(`${fullDir}/${file}`, 'utf8').trim());
-          fans.push({
-            id: `${dir}-fan${idx}`,
-            label: `${chipName} Fan ${idx}`,
-            rpm,
-            pwmPercent: Math.min(100, Math.round((rpm / 2400) * 100)),
-          });
+        const files = fs.readdirSync(fullDir);
+        for (const file of files) {
+          if (/^temp\d+_input$/.test(file)) {
+            const idx = file.match(/\d+/)?.[0] || '1';
+            try {
+              const milli = Number(fs.readFileSync(`${fullDir}/${file}`, 'utf8').trim());
+              if (!Number.isFinite(milli) || milli <= -50000 || milli >= 150000) continue;
+              let label = `${chipName} temp${idx}`;
+              try {
+                label = fs.readFileSync(`${fullDir}/temp${idx}_label`, 'utf8').trim();
+              } catch {
+                // ignore
+              }
+              temps.push({
+                id: `${dir}-temp${idx}`,
+                chipName,
+                label,
+                tempC: Number((milli / 1000).toFixed(1)),
+                highC: 85,
+              });
+            } catch {
+              // ignore unreadable sensor
+            }
+          }
+          if (/^fan\d+_input$/.test(file)) {
+            const idx = file.match(/\d+/)?.[0] || '1';
+            try {
+              const rpm = Number(fs.readFileSync(`${fullDir}/${file}`, 'utf8').trim());
+              if (Number.isFinite(rpm)) {
+                fans.push({
+                  id: `${dir}-fan${idx}`,
+                  label: `${chipName} Fan ${idx}`,
+                  rpm,
+                  pwmPercent: Math.min(100, Math.round((rpm / 2400) * 100)),
+                });
+              }
+            } catch {
+              // ignore
+            }
+          }
+          if (
+            hwmonCpuPowerW === null &&
+            (chipName.includes('energy') ||
+              chipName.includes('zenergy') ||
+              chipName.includes('zenpower') ||
+              chipName.includes('k10temp') ||
+              chipName.includes('coretemp')) &&
+            /^power\d+_(average|input)$/.test(file)
+          ) {
+            try {
+              const uw = Number(fs.readFileSync(`${fullDir}/${file}`, 'utf8').trim());
+              if (Number.isFinite(uw) && uw > 0) {
+                hwmonCpuPowerW = Number((uw / 1_000_000).toFixed(1));
+              }
+            } catch {
+              // ignore
+            }
+          }
         }
       }
     }
   } catch {
     // ignore
   }
-  return {temps, fans};
+
+  // Fallback thermal zones if hwmon missing or empty
+  let thermalPkgTemp: number | null = null;
+  let thermalAcpiTemp: number | null = null;
+  try {
+    const tzBase = '/sys/class/thermal';
+    if (fs.existsSync(tzBase)) {
+      for (const dir of fs.readdirSync(tzBase)) {
+        if (!dir.startsWith('thermal_zone')) continue;
+        const fullDir = `${tzBase}/${dir}`;
+        try {
+          const type = fs.readFileSync(`${fullDir}/type`, 'utf8').trim().toLowerCase();
+          const milli = Number(fs.readFileSync(`${fullDir}/temp`, 'utf8').trim());
+          if (Number.isFinite(milli) && milli > 0 && milli < 150000) {
+            const c = Number((milli / 1000).toFixed(1));
+            if (type.includes('pkg') || type.includes('cpu') || type.includes('tctl')) {
+              thermalPkgTemp ??= c;
+            } else if (type.includes('acpitz')) {
+              thermalAcpiTemp ??= c;
+            }
+            if (!temps.some((t) => t.label.toLowerCase() === type)) {
+              temps.push({id: dir, chipName: type, label: type, tempC: c, highC: 90});
+            }
+          }
+        } catch {
+          // ignore
+        }
+      }
+    }
+  } catch {
+    // ignore
+  }
+
+  // Pick CPU temp strictly by sensor priority instead of blind temps[0]
+  const pickTemp = (pred: (t: DetailedTempSensor) => boolean): number | null => {
+    const hit = temps.find(pred);
+    return hit ? hit.tempC : null;
+  };
+
+  const cpuTempC =
+    pickTemp(
+      (t) =>
+        (t.chipName.includes('k10temp') || t.chipName.includes('zenpower') || t.chipName.includes('ryzen')) &&
+        /tctl|tdie|tccd/i.test(t.label)
+    ) ??
+    pickTemp((t) => t.chipName.includes('k10temp') || t.chipName.includes('zenpower')) ??
+    pickTemp((t) => t.chipName.includes('coretemp') && /package|pkg|core\s*0/i.test(t.label)) ??
+    pickTemp((t) => t.chipName.includes('coretemp')) ??
+    pickTemp(
+      (t) =>
+        (t.chipName.startsWith('nct') || t.chipName.startsWith('it8') || t.chipName.startsWith('f71')) &&
+        /cpu|peci/i.test(t.label)
+    ) ??
+    thermalPkgTemp ??
+    thermalAcpiTemp ??
+    pickTemp((t) => !t.chipName.includes('nvme') && !t.chipName.includes('amdgpu') && !t.chipName.includes('nouveau')) ??
+    temps[0]?.tempC ??
+    null;
+
+  return {temps, fans, cpuTempC, hwmonCpuPowerW};
+}
+
+function readRaplPowerWatts(): number | null {
+  try {
+    let raplDir = '/sys/class/powercap/intel-rapl:0';
+    if (!fs.existsSync(`${raplDir}/energy_uj`)) {
+      const base = '/sys/class/powercap';
+      if (fs.existsSync(base)) {
+        for (const d of fs.readdirSync(base)) {
+          const candidate = `${base}/${d}`;
+          const energyFile = `${candidate}/energy_uj`;
+          if (!fs.existsSync(energyFile)) continue;
+          const domainName = readSysfsText(`${candidate}/name`) || '';
+          if (domainName.includes('package') || d.endsWith(':0')) {
+            raplDir = candidate;
+            break;
+          }
+        }
+      }
+    }
+    const raplPath = `${raplDir}/energy_uj`;
+    if (!fs.existsSync(raplPath)) return null;
+    const energyUj = Number(fs.readFileSync(raplPath, 'utf8').trim());
+    const now = Date.now();
+    if (!Number.isFinite(energyUj) || energyUj <= 0) return null;
+    if (!prevRaplSample || now <= prevRaplSample.timestamp) {
+      prevRaplSample = {energyUj, timestamp: now};
+      return null;
+    }
+    let deltaUj = energyUj - prevRaplSample.energyUj;
+    if (deltaUj < 0) {
+      const maxPath = `${raplDir}/max_energy_range_uj`;
+      const maxUj = fs.existsSync(maxPath) ? Number(fs.readFileSync(maxPath, 'utf8').trim()) : 0;
+      deltaUj = maxUj > 0 ? maxUj - prevRaplSample.energyUj + energyUj : 0;
+    }
+    const dtSec = (now - prevRaplSample.timestamp) / 1000;
+    prevRaplSample = {energyUj, timestamp: now};
+    if (dtSec <= 0 || deltaUj <= 0) return null;
+    const watts = deltaUj / 1_000_000 / dtSec;
+    return watts > 0 && watts < 600 ? Number(watts.toFixed(1)) : null;
+  } catch {
+    return null;
+  }
+}
+
+function readSysfsText(filePath: string): string | null {
+  try {
+    if (!fs.existsSync(filePath)) return null;
+    return fs.readFileSync(filePath, 'utf8').trim();
+  } catch {
+    return null;
+  }
+}
+
+function readSysfsNumber(filePath: string): number | null {
+  const txt = readSysfsText(filePath);
+  if (!txt) return null;
+  const n = Number(txt);
+  return Number.isFinite(n) ? n : null;
+}
+
+function readLocalGpus(): GpuInfo[] {
+  const gpus: GpuInfo[] = [];
+
+  // 1. NVIDIA via nvidia-smi (when NVIDIA Driver + container toolkit are present on Unraid)
+  if (nvidiaSmiAvailable !== false) {
+    try {
+      const out = execSync(
+        'nvidia-smi --query-gpu=name,temperature.gpu,utilization.gpu,memory.used,memory.total,power.draw,clocks.current.graphics --format=csv,noheader,nounits 2>/dev/null',
+        {encoding: 'utf8', timeout: 1000}
+      ).trim();
+      nvidiaSmiAvailable = true;
+      if (out) {
+        out.split('\n').forEach((line, idx) => {
+          const parts = line.split(',').map((s) => s.trim());
+          if (parts.length < 5) return;
+          const parseMaybe = (v: string | undefined) => {
+            if (!v || v === '[N/A]' || v === 'N/A') return null;
+            const n = Number(v);
+            return Number.isFinite(n) ? n : null;
+          };
+          gpus.push({
+            id: `nvidia-${idx}`,
+            name: parts[0] || `NVIDIA GPU ${idx}`,
+            vendor: 'nvidia',
+            tempC: parseMaybe(parts[1]),
+            utilPercent: parseMaybe(parts[2]),
+            vramUsedMB: parseMaybe(parts[3]),
+            vramTotalMB: parseMaybe(parts[4]),
+            powerW: parseMaybe(parts[5]),
+            freqMhz: parseMaybe(parts[6]),
+          });
+        });
+      }
+    } catch {
+      nvidiaSmiAvailable = false;
+    }
+  }
+
+  // 2. DRM sysfs GPUs (AMD amdgpu e.g. Radeon 780M on WTR MAX, Intel i915/xe Arc/UHD, etc.)
+  try {
+    const drmBase = '/sys/class/drm';
+    if (fs.existsSync(drmBase)) {
+      const cards = fs
+        .readdirSync(drmBase)
+        .filter((d) => /^card\d+$/.test(d))
+        .sort();
+
+      for (const card of cards) {
+        const devDir = `${drmBase}/${card}/device`;
+        if (!fs.existsSync(devDir)) continue;
+
+        const vendorHex = (readSysfsText(`${devDir}/vendor`) || '').toLowerCase();
+        const deviceHex = (readSysfsText(`${devDir}/device`) || '').toLowerCase();
+        const uevent = readSysfsText(`${devDir}/uevent`) || '';
+        const driverMatch = uevent.match(/^DRIVER=(.+)$/m);
+        const driver = driverMatch ? driverMatch[1].trim().toLowerCase() : '';
+        const pciIdMatch = uevent.match(/^PCI_ID=([0-9A-Fa-f:]+)$/m);
+        const pciId = pciIdMatch ? pciIdMatch[1].toUpperCase() : '';
+
+        if (vendorHex === '0x10de' && gpus.some((g) => g.vendor === 'nvidia')) {
+          continue; // already captured with richer stats via nvidia-smi
+        }
+
+        const vendor: GpuInfo['vendor'] =
+          vendorHex === '0x1002'
+            ? 'amd'
+            : vendorHex === '0x8086'
+              ? 'intel'
+              : vendorHex === '0x10de'
+                ? 'nvidia'
+                : 'unknown';
+
+        // Read nested hwmon under DRM device
+        let tempC: number | null = null;
+        let powerW: number | null = null;
+        let freqMhz: number | null = null;
+
+        try {
+          const hwmonDir = `${devDir}/hwmon`;
+          if (fs.existsSync(hwmonDir)) {
+            for (const hw of fs.readdirSync(hwmonDir)) {
+              const p = `${hwmonDir}/${hw}`;
+              const t1 = readSysfsNumber(`${p}/temp1_input`);
+              if (t1 !== null && t1 > -50000 && t1 < 150000) {
+                tempC = Number((t1 / 1000).toFixed(1));
+              }
+              const pw = readSysfsNumber(`${p}/power1_average`) ?? readSysfsNumber(`${p}/power1_input`);
+              if (pw !== null && pw > 0) {
+                powerW = Number((pw / 1_000_000).toFixed(1));
+              }
+              const fq = readSysfsNumber(`${p}/freq1_input`);
+              if (fq !== null && fq > 0) {
+                freqMhz = Math.round(fq / 1_000_000);
+              }
+            }
+          }
+        } catch {
+          // ignore
+        }
+
+        let utilPercent: number | null = readSysfsNumber(`${devDir}/gpu_busy_percent`);
+        const vramUsedBytes = readSysfsNumber(`${devDir}/mem_info_vram_used`);
+        const vramTotalBytes = readSysfsNumber(`${devDir}/mem_info_vram_total`);
+        const vramUsedMB = vramUsedBytes !== null ? Math.round(vramUsedBytes / (1024 * 1024)) : null;
+        const vramTotalMB = vramTotalBytes !== null ? Math.round(vramTotalBytes / (1024 * 1024)) : null;
+
+        if (freqMhz === null && vendor === 'amd') {
+          const dpm = readSysfsText(`${devDir}/pp_dpm_sclk`);
+          const activeLine = dpm?.split('\n').find((l) => l.includes('*'));
+          const m = activeLine?.match(/(\d+)\s*Mhz/i);
+          if (m) freqMhz = Number(m[1]);
+        }
+
+        if (vendor === 'intel') {
+          freqMhz =
+            freqMhz ??
+            readSysfsNumber(`${drmBase}/${card}/gt_cur_freq_mhz`) ??
+            readSysfsNumber(`${drmBase}/${card}/gt/gt0/rps_cur_freq_mhz`) ??
+            readSysfsNumber(`${drmBase}/${card}/tile0/gt0/freq0/cur_freq`);
+
+          if (utilPercent === null) {
+            const rc6Ms =
+              readSysfsNumber(`${drmBase}/${card}/gt/gt0/rc6_residency_ms`) ??
+              readSysfsNumber(`${drmBase}/${card}/power/rc6_residency_ms`);
+            if (rc6Ms !== null) {
+              const now = Date.now();
+              const prev = prevIntelRc6Map.get(card);
+              if (prev && now > prev.timestamp && rc6Ms >= prev.rc6Ms) {
+                const dt = now - prev.timestamp;
+                const dRc6 = rc6Ms - prev.rc6Ms;
+                utilPercent = Math.max(0, Math.min(100, Math.round(100 - (dRc6 / dt) * 100)));
+              }
+              prevIntelRc6Map.set(card, {rc6Ms, timestamp: now});
+            }
+          }
+        }
+
+        let name = readSysfsText(`${devDir}/product_name`) || readSysfsText(`${devDir}/label`);
+        if (!name) {
+          if (vendor === 'amd') {
+            name =
+              pciId === '1002:15BF' || pciId === '1002:1900' || pciId === '1002:15C8'
+                ? 'AMD Radeon 780M Graphics'
+                : `AMD Radeon GPU (${deviceHex || driver || 'amdgpu'})`;
+          } else if (vendor === 'intel') {
+            name = `Intel Graphics (${deviceHex || driver || 'i915'})`;
+          } else if (vendor === 'nvidia') {
+            name = `NVIDIA GPU (${deviceHex || 'nouveau'})`;
+          } else {
+            name = `GPU ${card} (${driver || pciId || 'drm'})`;
+          }
+        }
+
+        gpus.push({
+          id: card,
+          name,
+          vendor,
+          tempC,
+          utilPercent,
+          freqMhz,
+          powerW,
+          vramUsedMB,
+          vramTotalMB,
+        });
+      }
+    }
+  } catch {
+    // ignore
+  }
+
+  return gpus;
 }
 
 async function readLocalDockerSocket(): Promise<DockerContainerInfo[]> {
@@ -399,6 +823,72 @@ function readUnraidEmhttpVars(): Record<string, string> {
   return vars;
 }
 
+function readUnraidDisksIni(): DiskInfo[] {
+  const disks: DiskInfo[] = [];
+  try {
+    const iniPath = '/var/local/emhttp/disks.ini';
+    if (!fs.existsSync(iniPath)) return disks;
+    const raw = fs.readFileSync(iniPath, 'utf8');
+    let currentSection = '';
+    let current: Record<string, string> = {};
+
+    const flush = () => {
+      if (!currentSection || !current.device) return;
+      const status = (current.status || '').toUpperCase();
+      if (status === 'DISK_NP' || status === 'DISK_NP_DSBL') return;
+      const name = current.name || currentSection;
+      const role: DiskInfo['role'] =
+        name.startsWith('parity')
+          ? 'parity'
+          : name.startsWith('cache') || (current.fsType || '').includes('zfs')
+            ? name.startsWith('cache')
+              ? 'cache'
+              : 'zfs'
+            : 'data';
+      const sizeBytes = (Number(current.size || 0) || 0) * 1024;
+      const fsSizeBytes = (Number(current.fsSize || 0) || 0) * 1024;
+      const fsFreeBytes = (Number(current.fsFree || 0) || 0) * 1024;
+      const usedBytes = fsSizeBytes > 0 ? Math.max(0, fsSizeBytes - fsFreeBytes) : 0;
+      const tempNum = Number(current.temp);
+      const color = (current.color || '').toLowerCase();
+
+      disks.push({
+        id: name,
+        name: name.charAt(0).toUpperCase() + name.slice(1),
+        device: `/dev/${current.device}`,
+        role,
+        model: (current.id || current.model || 'Unraid Drive').trim(),
+        sizeBytes: fsSizeBytes || sizeBytes,
+        usedBytes,
+        tempC: Number.isFinite(tempNum) && tempNum > 0 ? tempNum : 0,
+        smartStatus: Number(current.numErrors || 0) > 0 ? 'WARNING' : 'PASSED',
+        spinState: color.includes('blink') ? 'standby' : 'active',
+        readMBps: 0,
+        writeMBps: 0,
+        errors: Number(current.numErrors || 0) || 0,
+      });
+    };
+
+    for (const line of raw.split('\n')) {
+      const sec = line.match(/^\[(?:"([^"]+)"|([^\]]+))\]/);
+      if (sec) {
+        flush();
+        currentSection = (sec[1] || sec[2] || '').trim();
+        current = {};
+        continue;
+      }
+      const kv = line.match(/^([^=]+)="?(.*?)"?$/);
+      if (kv) {
+        current[kv[1].trim()] = kv[2].trim();
+      }
+    }
+    flush();
+  } catch {
+    // ignore
+  }
+  return disks;
+}
+
 function readSmbSessions(): ActiveSessionInfo[] {
   try {
     const out = execSync('smbstatus -b --json 2>/dev/null', {encoding: 'utf8', timeout: 800});
@@ -426,25 +916,45 @@ function readSmbSessions(): ActiveSessionInfo[] {
 
 export async function getLocalHostTelemetry(haConnected: boolean): Promise<TelemetrySnapshot> {
   const cpuPercent = readCpuPercentFromProc();
+  const cpuDetails = readLocalCpuDetails();
   const mem = readProcMemInfo();
   const net = readLocalNetworkStats();
   const hwmon = readLocalHwmon();
+  const raplWatts = readRaplPowerWatts();
+  const gpus = readLocalGpus();
   const containers = await readLocalDockerSocket();
-  const localDisks = readLocalDisks();
   const emhttp = readUnraidEmhttpVars();
+  const emhttpDisks = readUnraidDisksIni();
+  const localDisks = readLocalDisks();
   const sessions = readSmbSessions();
-  const cpus = os.cpus();
   const ramPct = mem.total > 0 ? Math.round((mem.used / mem.total) * 100) : 0;
 
   pushHistoryPoint(cpuPercent, ramPct, net.rxMbps, net.txMbps);
 
-  const isUnraidHost = Object.keys(emhttp).length > 0;
+  const isUnraidHost = Object.keys(emhttp).length > 0 || emhttpDisks.length > 0;
+  const disks = emhttpDisks.length > 0 ? emhttpDisks : localDisks.disks;
+  const arrayDataDisks = emhttpDisks.filter((d) => d.role === 'data');
+  const totalBytes =
+    arrayDataDisks.length > 0
+      ? arrayDataDisks.reduce((a, d) => a + d.sizeBytes, 0)
+      : localDisks.totalBytes;
+  const usedBytes =
+    arrayDataDisks.length > 0
+      ? arrayDataDisks.reduce((a, d) => a + d.usedBytes, 0)
+      : localDisks.usedBytes;
+  const freeBytes = Math.max(0, totalBytes - usedBytes);
+
+  const cpuTempC = hwmon.cpuTempC ?? 0;
+  const cpuPowerW =
+    raplWatts ?? hwmon.hwmonCpuPowerW ?? Number((12 + cpuPercent * 0.4).toFixed(1));
 
   return {
     timestamp: Date.now(),
     sourceMode: 'local',
-    sourceLabel: isUnraidHost ? 'Local Unraid Host (emhttp + procfs)' : 'Local Linux Host (procfs)',
-    isRealUnraidHost: isUnraidHost,
+    sourceLabel: isUnraidHost
+      ? 'Local Unraid Host (emhttp + procfs + sysfs)'
+      : 'Local Linux Host (procfs + sysfs)',
+    isRealUnraidHost: isUnraidHost || fs.existsSync('/var/run/docker.sock'),
     agentConnected: false,
     haConnected,
     system: {
@@ -452,11 +962,12 @@ export async function getLocalHostTelemetry(haConnected: boolean): Promise<Telem
       unraidVersion: emhttp.version ? `Unraid OS ${emhttp.version}` : `${os.type()} ${os.release()}`,
       kernel: os.release(),
       uptimeSeconds: Math.floor(os.uptime()),
-      cpuModel: cpus[0]?.model?.trim() || 'x86_64 Processor',
-      cpuCores: cpus.length,
+      cpuModel: cpuDetails.model,
+      cpuCores: cpuDetails.cores,
       cpuPercent,
-      cpuTempC: hwmon.temps[0]?.tempC ?? 42,
-      cpuPowerW: Number((18 + cpuPercent * 0.45).toFixed(1)),
+      cpuFreqMhz: cpuDetails.freqMhz,
+      cpuTempC,
+      cpuPowerW,
       loadAvg: os.loadavg().map((v) => Number(v.toFixed(2))) as [number, number, number],
       ramTotalBytes: mem.total,
       ramUsedBytes: mem.used,
@@ -465,13 +976,18 @@ export async function getLocalHostTelemetry(haConnected: boolean): Promise<Telem
       swapUsedBytes: mem.swapUsed,
     },
     array: {
-      state: emhttp.mdState === 'STARTED' ? 'STARTED' : 'STARTED',
+      state:
+        Number(emhttp.mdResync || 0) > 0
+          ? 'PARITY_SYNC'
+          : emhttp.mdState === 'STOPPED'
+            ? 'STOPPED'
+            : 'STARTED',
       parityValid: emhttp.mdResync === '0' || !emhttp.mdResync,
       parityCheckRunning: Number(emhttp.mdResync || 0) > 0,
       parityProgressPercent: 0,
-      totalBytes: localDisks.totalBytes,
-      usedBytes: localDisks.usedBytes,
-      freeBytes: localDisks.freeBytes,
+      totalBytes,
+      usedBytes,
+      freeBytes,
       moverRunning: fs.existsSync('/var/run/mover.pid'),
     },
     history: {
@@ -481,7 +997,7 @@ export async function getLocalHostTelemetry(haConnected: boolean): Promise<Telem
       netRxSeries: [...historyBuffer.netRxSeries],
       netTxSeries: [...historyBuffer.netTxSeries],
     },
-    disks: localDisks.disks,
+    disks,
     zfsPools: [],
     shares: [],
     containers,
@@ -500,8 +1016,9 @@ export async function getLocalHostTelemetry(haConnected: boolean): Promise<Telem
       currentPowerW: 0,
     },
     fans: hwmon.fans,
-    temps: hwmon.temps,
+    temps: hwmon.temps.map(({id, label, tempC, highC}) => ({id, label, tempC, highC})),
     network: net.interfaces,
+    gpus,
   };
 }
 
@@ -696,6 +1213,7 @@ export async function fetchAgentTelemetry(
     fans: [],
     temps: [],
     network: netList,
+    gpus: [],
   };
 }
 
@@ -1044,6 +1562,19 @@ export function getSimulationTelemetry(haConnected: boolean): TelemetrySnapshot 
         sfpTempC: 51.8,
       },
     ],
+    gpus: [
+      {
+        id: 'gpu-0',
+        name: 'AMD Radeon 780M Graphics',
+        vendor: 'amd',
+        tempC: Math.round(44 + Math.sin(t * 0.25) * 2),
+        utilPercent: Math.max(2, Math.round(14 + Math.sin(t * 0.4) * 9)),
+        freqMhz: 1100,
+        powerW: Number((8.5 + Math.sin(t * 0.35) * 2.1).toFixed(1)),
+        vramUsedMB: 512,
+        vramTotalMB: 4096,
+      },
+    ],
   };
 }
 
@@ -1141,25 +1672,49 @@ export async function pollCustomConnections(connections: CustomConnection[]): Pr
   );
 }
 
+function hasRealHostHardwarePaths(): boolean {
+  try {
+    if (fs.existsSync('/var/local/emhttp/var.ini') || fs.existsSync('/var/local/emhttp/disks.ini')) {
+      return true;
+    }
+    if (fs.existsSync('/var/run/docker.sock')) {
+      return true;
+    }
+    if (fs.existsSync('/sys/class/hwmon') && fs.readdirSync('/sys/class/hwmon').length > 0) {
+      return true;
+    }
+    if (fs.existsSync('/sys/class/drm') && fs.readdirSync('/sys/class/drm').some((d) => /^card\d+$/.test(d))) {
+      return true;
+    }
+  } catch {
+    // ignore
+  }
+  return false;
+}
+
 export async function resolveTelemetry(
-  _sourceMode: DataSourceMode,
+  sourceMode: DataSourceMode,
   agentEnabled: boolean,
   agentUrl: string,
   agentToken: string,
   haConnected: boolean
 ): Promise<TelemetrySnapshot> {
-  // 1. Always check Unraid Management Agent first if configured and enabled
+  // 1. Check Unraid Management Agent first if configured and enabled
   if (agentEnabled && agentUrl) {
     const agentData = await fetchAgentTelemetry(agentUrl, agentToken, haConnected);
     if (agentData) return agentData;
   }
 
-  // 2. Always check if running natively on an Unraid host (/var/local/emhttp/var.ini)
-  if (fs.existsSync('/var/local/emhttp/var.ini')) {
+  if (sourceMode === 'simulation') {
+    return getSimulationTelemetry(haConnected);
+  }
+
+  // 2. Use real host telemetry whenever running on Unraid or Linux with real host hardware paths
+  if (sourceMode === 'local' || hasRealHostHardwarePaths()) {
     return await getLocalHostTelemetry(haConnected);
   }
 
-  // 3. Otherwise use real container procfs + WTR MAX profile enrichment so all Unraid widgets render live
+  // 3. Browser preview sandbox fallback when no Unraid / Linux hardware sensors exist
   return getSimulationTelemetry(haConnected);
 }
 
@@ -1204,12 +1759,46 @@ export function buildExposedEntities(
   const txTotal = Number(snapshot.network.reduce((a, n) => a + n.txMbps, 0).toFixed(1));
 
   pushEntity('server.hostname', 'server', 'Server Hostname', snapshot.system.hostname, '');
+  pushEntity('server.cpu_model', 'server', 'CPU Model', snapshot.system.cpuModel, '');
   pushEntity('server.cpu_percent', 'server', 'CPU Load', snapshot.system.cpuPercent, '%', snapshot.history.cpuSeries);
+  if (snapshot.system.cpuFreqMhz !== undefined && snapshot.system.cpuFreqMhz !== null) {
+    pushEntity('server.cpu_freq_mhz', 'server', 'CPU Clock', snapshot.system.cpuFreqMhz, 'MHz');
+  }
   pushEntity('server.cpu_temp', 'server', 'CPU Temp', snapshot.system.cpuTempC, '°C');
   pushEntity('server.cpu_power_w', 'server', 'CPU Power', snapshot.system.cpuPowerW, 'W');
   pushEntity('server.load_1m', 'server', 'Load Avg (1m)', snapshot.system.loadAvg[0], '');
   pushEntity('server.ram_percent', 'server', 'Memory Usage', ramPct, '%', snapshot.history.ramSeries);
   pushEntity('server.ram_used_gb', 'server', 'Memory Used', ramUsedGb, 'GB');
+
+  const primaryGpu = snapshot.gpus?.[0];
+  if (primaryGpu) {
+    pushEntity('server.gpu_name', 'server', 'GPU Model', primaryGpu.name, '');
+    if (primaryGpu.utilPercent !== null) {
+      pushEntity('server.gpu_util_percent', 'server', 'GPU Load', primaryGpu.utilPercent, '%');
+    }
+    if (primaryGpu.tempC !== null) {
+      pushEntity('server.gpu_temp', 'server', 'GPU Temp', primaryGpu.tempC, '°C');
+    }
+    if (primaryGpu.powerW !== null) {
+      pushEntity('server.gpu_power_w', 'server', 'GPU Power', primaryGpu.powerW, 'W');
+    }
+    if (primaryGpu.freqMhz !== null) {
+      pushEntity('server.gpu_freq_mhz', 'server', 'GPU Clock', primaryGpu.freqMhz, 'MHz');
+    }
+    if (primaryGpu.vramUsedMB !== null) {
+      pushEntity('server.gpu_vram_used_mb', 'server', 'GPU VRAM Used', primaryGpu.vramUsedMB, 'MB');
+    }
+    if (primaryGpu.vramUsedMB !== null && primaryGpu.vramTotalMB && primaryGpu.vramTotalMB > 0) {
+      pushEntity(
+        'server.gpu_vram_percent',
+        'server',
+        'GPU VRAM %',
+        Math.round((primaryGpu.vramUsedMB / primaryGpu.vramTotalMB) * 100),
+        '%'
+      );
+    }
+  }
+
   pushEntity('server.array_used_pct', 'server', 'Array Used', arrayPct, '%');
   pushEntity('server.array_used_tb', 'server', 'Array Used TB', arrayUsedTb, 'TB');
   pushEntity('server.array_state', 'server', 'Array State', snapshot.array.state, '');

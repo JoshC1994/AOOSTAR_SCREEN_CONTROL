@@ -2,7 +2,7 @@ FROM node:22-alpine
 
 WORKDIR /app
 
-RUN apk add --no-cache bash
+RUN apk add --no-cache bash coreutils
 
 COPY package.json bun.lock* package-lock.json* ./
 RUN npm install

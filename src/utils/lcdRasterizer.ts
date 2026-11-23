@@ -17,13 +17,18 @@ export async function rasterizeScreenToRgbaBase64(
   telemetry: TelemetrySnapshot | null,
   haEntities: HomeAssistantEntity[],
   exposedEntities: ExposedEntity[] = [],
-  dockerIcons: Record<string, string> = {}
+  dockerIcons: Record<string, string> = {},
+  rotation: 0 | 90 | 180 | 270 = 0
 ): Promise<string> {
   const canvas = document.createElement('canvas');
   canvas.width = LCD_WIDTH;
   canvas.height = LCD_HEIGHT;
   const ctx = canvas.getContext('2d');
   if (!ctx) return '';
+  if (rotation === 180) {
+    ctx.translate(LCD_WIDTH, LCD_HEIGHT);
+    ctx.rotate(Math.PI);
+  }
 
   ctx.fillStyle = screen.backgroundColor || '#0B0E14';
   ctx.fillRect(0, 0, LCD_WIDTH, LCD_HEIGHT);

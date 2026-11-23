@@ -524,7 +524,7 @@ export function ScreenStudioView({
   return (
     <div className="flex flex-col h-[calc(100vh-57px)] min-h-[660px] overflow-hidden">
       {/* Screen Carousel & Rotation Bar */}
-      <div className="border-b border-[#1F2937] bg-[#0D111A] px-6 py-2.5 flex flex-wrap items-center justify-between gap-4 shrink-0">
+      <div className="border-b border-slate-200 dark:border-[#1F2937] bg-white dark:bg-[#0D111A] px-6 py-2.5 flex flex-wrap items-center justify-between gap-4 shrink-0">
         <div className="flex items-center gap-2 overflow-x-auto py-0.5">
           {enabledScreens.map((scr, idx) => {
             const isActive = activeScreen ? scr.id === activeScreen.id : false;
@@ -533,8 +533,8 @@ export function ScreenStudioView({
                 key={scr.id}
                 className={`inline-flex items-center rounded-md border transition-colors shrink-0 ${
                   isActive
-                    ? 'bg-[#1A2232] border-amber-500/70 text-slate-100'
-                    : 'bg-[#121722] border-[#1F2937] text-slate-400 hover:text-slate-200 hover:border-slate-700'
+                    ? 'bg-amber-50 dark:bg-[#1A2232] border-amber-500/70 text-slate-900 dark:text-slate-100'
+                    : 'bg-slate-50 dark:bg-[#121722] border-slate-200 dark:border-[#1F2937] text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:border-slate-300 dark:hover:border-slate-700'
                 }`}
               >
                 <button
@@ -545,7 +545,7 @@ export function ScreenStudioView({
                   className="px-3 py-1.5 text-xs font-medium flex items-center gap-2 whitespace-nowrap"
                 >
                   <span>{idx + 1}. {scr.name}</span>
-                  <span className="font-mono text-[11px] text-slate-400 tabular-nums">
+                  <span className="font-mono text-[11px] text-slate-500 dark:text-slate-400 tabular-nums">
                     {scr.durationSec}s
                   </span>
                 </button>
@@ -560,11 +560,12 @@ export function ScreenStudioView({
           )}
 
           <button
+            data-guide="add-screen-btn"
             onClick={() => {
               setAddScreenStep('menu');
               setShowTemplateModal(true);
             }}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-dashed border-slate-700 hover:border-amber-500/60 text-xs font-medium text-slate-300 hover:text-amber-300 transition-colors whitespace-nowrap shrink-0"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-dashed border-slate-300 dark:border-slate-700 hover:border-amber-500/60 text-xs font-medium text-slate-700 dark:text-slate-300 hover:text-amber-700 dark:hover:text-amber-300 transition-colors whitespace-nowrap shrink-0"
           >
             <Plus className="w-3.5 h-3.5" />
             Add Screen
@@ -578,8 +579,8 @@ export function ScreenStudioView({
             }
             className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium border transition-colors whitespace-nowrap shrink-0 ${
               config.rotationEnabled
-                ? 'bg-amber-500/20 border-amber-500/50 text-amber-300'
-                : 'bg-[#141A26] border-[#263042] text-slate-200 hover:bg-[#1B2334]'
+                ? 'bg-amber-500/20 border-amber-500/50 text-amber-700 dark:text-amber-300'
+                : 'bg-slate-100 dark:bg-[#141A26] border-slate-300 dark:border-[#263042] text-slate-800 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-[#1B2334]'
             }`}
           >
             {config.rotationEnabled ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
@@ -590,12 +591,12 @@ export function ScreenStudioView({
 
       {/* Main 3-Pane Studio */}
       {!activeScreen ? (
-        <div className="flex-1 flex items-center justify-center bg-[#080B10] p-8">
-          <div className="max-w-md rounded-lg border border-[#1F2937] bg-[#0F131C] p-6 text-center space-y-3">
-            <div className="text-sm font-display font-semibold text-slate-100">
+        <div className="flex-1 flex items-center justify-center bg-slate-200/70 dark:bg-[#080B10] p-8">
+          <div className="max-w-md rounded-lg border border-slate-200 dark:border-[#1F2937] bg-white dark:bg-[#0F131C] p-6 text-center space-y-3 shadow-lg">
+            <div className="text-sm font-display font-semibold text-slate-900 dark:text-slate-100">
               All Screens Are Paused
             </div>
-            <p className="text-xs text-slate-400">
+            <p className="text-xs text-slate-600 dark:text-slate-400">
               Activate an existing screen from Saved Screens, or add a new screen to display it here and include it in rotation.
             </p>
             <button
@@ -613,12 +614,17 @@ export function ScreenStudioView({
       ) : (
       <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr_320px] flex-1 min-h-0 overflow-hidden">
         {/* Left Drawer */}
-        <aside className="border-r border-[#1F2937] bg-[#0F131C] flex flex-col overflow-hidden">
-          <div className="grid grid-cols-[1fr_1fr_1.35fr] border-b border-[#1F2937] p-1.5 bg-[#0B0E14] gap-1">
+        <aside
+          data-guide="left-drawer"
+          className="border-r border-slate-200 dark:border-[#1F2937] bg-white dark:bg-[#0F131C] flex flex-col overflow-hidden"
+        >
+          <div className="grid grid-cols-[1fr_1fr_1.35fr] border-b border-slate-200 dark:border-[#1F2937] p-1.5 bg-slate-100 dark:bg-[#0B0E14] gap-1">
             <button
               onClick={() => setLeftTab('widgets')}
               className={`py-1.5 px-1 text-[11px] font-medium rounded transition-colors whitespace-nowrap ${
-                leftTab === 'widgets' ? 'bg-[#1A2233] text-slate-100' : 'text-slate-400 hover:text-slate-200'
+                leftTab === 'widgets'
+                  ? 'bg-white dark:bg-[#1A2233] text-slate-900 dark:text-slate-100 shadow-xs dark:shadow-none'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
               }`}
             >
               Blocks
@@ -626,7 +632,9 @@ export function ScreenStudioView({
             <button
               onClick={() => setLeftTab('themes')}
               className={`py-1.5 px-1 text-[11px] font-medium rounded transition-colors whitespace-nowrap ${
-                leftTab === 'themes' ? 'bg-[#1A2233] text-slate-100' : 'text-slate-400 hover:text-slate-200'
+                leftTab === 'themes'
+                  ? 'bg-white dark:bg-[#1A2233] text-slate-900 dark:text-slate-100 shadow-xs dark:shadow-none'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
               }`}
             >
               Themes
@@ -634,7 +642,9 @@ export function ScreenStudioView({
             <button
               onClick={() => setLeftTab('photos')}
               className={`py-1.5 px-1 text-[11px] font-medium rounded transition-colors whitespace-nowrap ${
-                leftTab === 'photos' ? 'bg-[#1A2233] text-slate-100' : 'text-slate-400 hover:text-slate-200'
+                leftTab === 'photos'
+                  ? 'bg-white dark:bg-[#1A2233] text-slate-900 dark:text-slate-100 shadow-xs dark:shadow-none'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
               }`}
             >
               Media Library
@@ -643,7 +653,7 @@ export function ScreenStudioView({
 
           {leftTab === 'widgets' && (
             <div className="flex-1 overflow-y-auto p-3 space-y-4">
-              <p className="text-[11px] text-slate-400 px-1">
+              <p className="text-[11px] text-slate-600 dark:text-slate-400 px-1">
                 Click or drag any block onto the 960×376 screen.
               </p>
               {CATALOG_CATEGORIES.map((category) => {
@@ -662,11 +672,15 @@ export function ScreenStudioView({
                           e.dataTransfer.effectAllowed = 'copy';
                         }}
                         onClick={() => handleAddWidgetClick(item.type)}
-                        className="cursor-grab active:cursor-grabbing rounded-md border border-[#1F2937] bg-[#121824] hover:border-amber-500/40 hover:bg-[#171F2E] px-3 py-2 transition-colors flex items-center justify-between gap-2"
+                        className="cursor-grab active:cursor-grabbing rounded-md border border-slate-200 dark:border-[#1F2937] bg-slate-50 dark:bg-[#121824] hover:border-amber-500/40 hover:bg-amber-50/40 dark:hover:bg-[#171F2E] px-3 py-2 transition-colors flex items-center justify-between gap-2"
                       >
                         <div className="min-w-0">
-                          <div className="text-xs font-medium text-slate-200 truncate">{item.label}</div>
-                          <div className="text-[11px] text-slate-400 truncate mt-0.5">{item.description}</div>
+                          <div className="text-xs font-medium text-slate-800 dark:text-slate-200 truncate">
+                            {item.label}
+                          </div>
+                          <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate mt-0.5">
+                            {item.description}
+                          </div>
                         </div>
                         <Plus className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                       </div>
@@ -679,7 +693,7 @@ export function ScreenStudioView({
 
           {leftTab === 'themes' && (
             <div className="flex-1 overflow-y-auto p-3 space-y-2.5">
-              <p className="text-[11px] text-slate-400 px-1">
+              <p className="text-[11px] text-slate-600 dark:text-slate-400 px-1">
                 Apply a premade palette and backdrop to the active screen.
               </p>
               {LCD_THEMES.map((theme) => {
@@ -690,8 +704,8 @@ export function ScreenStudioView({
                     onClick={() => applyThemeToActiveScreen(theme)}
                     className={`w-full rounded-md border overflow-hidden text-left transition-all ${
                       isActiveTheme
-                        ? 'border-amber-400 ring-1 ring-amber-400/40'
-                        : 'border-[#263042] hover:border-slate-500'
+                        ? 'border-amber-500 ring-1 ring-amber-400/40'
+                        : 'border-slate-200 dark:border-[#263042] hover:border-slate-400 dark:hover:border-slate-500'
                     }`}
                   >
                     <div
@@ -732,7 +746,7 @@ export function ScreenStudioView({
                         </div>
                       </div>
                     </div>
-                    <div className="bg-[#121824] px-2.5 py-1.5 text-[11px] text-slate-400">
+                    <div className="bg-slate-50 dark:bg-[#121824] px-2.5 py-1.5 text-[11px] text-slate-600 dark:text-slate-400">
                       {theme.description}
                     </div>
                   </button>
@@ -746,9 +760,9 @@ export function ScreenStudioView({
               <button
                 onClick={() => bgFileInputRef.current?.click()}
                 disabled={uploadingImage}
-                className="w-full py-2.5 px-3 rounded-md border border-dashed border-slate-600 hover:border-amber-500/60 bg-[#121824] text-xs font-medium text-slate-200 flex items-center justify-center gap-2 transition-colors"
+                className="w-full py-2.5 px-3 rounded-md border border-dashed border-slate-300 dark:border-slate-600 hover:border-amber-500/60 bg-slate-50 dark:bg-[#121824] text-xs font-medium text-slate-800 dark:text-slate-200 flex items-center justify-center gap-2 transition-colors"
               >
-                <Upload className="w-3.5 h-3.5 text-amber-400" />
+                <Upload className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
                 {uploadingImage ? 'Importing...' : 'Import to Media Library'}
               </button>
               <input
@@ -764,18 +778,18 @@ export function ScreenStudioView({
               />
 
               {uploadError && (
-                <div className="px-2.5 py-2 rounded border border-red-900/50 bg-red-950/30 text-[11px] text-red-300">
+                <div className="px-2.5 py-2 rounded border border-red-300 dark:border-red-900/50 bg-red-50 dark:bg-red-950/30 text-[11px] text-red-700 dark:text-red-300">
                   {uploadError}
                 </div>
               )}
 
               <div className="space-y-2.5">
-                <div className="text-[11px] font-medium text-slate-400">
+                <div className="text-[11px] font-medium text-slate-600 dark:text-slate-400">
                   Imported Media ({config.customImages.length})
                 </div>
 
                 {config.customImages.length === 0 && (
-                  <div className="rounded border border-dashed border-[#263042] bg-[#0B0E14] px-3 py-4 text-center text-[11px] text-slate-500">
+                  <div className="rounded border border-dashed border-slate-300 dark:border-[#263042] bg-slate-50 dark:bg-[#0B0E14] px-3 py-4 text-center text-[11px] text-slate-500">
                     Import PNG, JPG, GIF, SVG, or MP4/WebM files to use in Image blocks and backgrounds.
                   </div>
                 )}
@@ -788,8 +802,8 @@ export function ScreenStudioView({
                   return (
                     <div
                       key={item.id}
-                      className={`rounded-md overflow-hidden border bg-[#121824] ${
-                        selected ? 'border-amber-400' : 'border-[#263042]'
+                      className={`rounded-md overflow-hidden border bg-slate-50 dark:bg-[#121824] ${
+                        selected ? 'border-amber-500' : 'border-slate-200 dark:border-[#263042]'
                       }`}
                     >
                       <div className="relative h-16 bg-black overflow-hidden">
@@ -818,16 +832,16 @@ export function ScreenStudioView({
                           <Trash2 className="w-3 h-3" />
                         </button>
                       </div>
-                      <div className="px-2 py-1.5 border-b border-[#1F2937]">
+                      <div className="px-2 py-1.5 border-b border-slate-200 dark:border-[#1F2937]">
                         <input
                           type="text"
                           value={item.name}
                           onChange={(e) => handleRenameMedia(item.id, e.target.value)}
                           placeholder="Media name"
-                          className="w-full px-1.5 py-0.5 rounded bg-[#0B0E14] border border-[#263042] text-[11px] text-slate-100 focus:outline-none focus:border-amber-500"
+                          className="w-full px-1.5 py-0.5 rounded bg-white dark:bg-[#0B0E14] border border-slate-300 dark:border-[#263042] text-[11px] text-slate-900 dark:text-slate-100 focus:outline-none focus:border-amber-500"
                         />
                       </div>
-                      <div className="grid grid-cols-2 divide-x divide-[#1F2937] text-[11px]">
+                      <div className="grid grid-cols-2 divide-x divide-slate-200 dark:divide-[#1F2937] text-[11px]">
                         {!isVid ? (
                           <button
                             onClick={() =>
@@ -837,7 +851,7 @@ export function ScreenStudioView({
                                 backgroundImage: item.url,
                               }))
                             }
-                            className="py-1.5 text-slate-300 hover:bg-[#1A2233] hover:text-white transition-colors"
+                            className="py-1.5 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-[#1A2233] hover:text-slate-950 dark:hover:text-white transition-colors"
                           >
                             Screen BG
                           </button>
@@ -853,7 +867,7 @@ export function ScreenStudioView({
                             updateActiveScreen((scr) => ({...scr, widgets: [...scr.widgets, created]}));
                             setSelectedWidgetId(created.id);
                           }}
-                          className="py-1.5 text-amber-300 hover:bg-[#1A2233] transition-colors"
+                          className="py-1.5 text-amber-700 dark:text-amber-300 hover:bg-slate-200 dark:hover:bg-[#1A2233] transition-colors font-medium"
                         >
                           Add Block
                         </button>
@@ -862,7 +876,7 @@ export function ScreenStudioView({
                   );
                 })}
 
-                <div className="text-[11px] font-medium text-slate-400 pt-2">
+                <div className="text-[11px] font-medium text-slate-600 dark:text-slate-400 pt-2">
                   Built-in Backdrops
                 </div>
                 {PRESET_BACKGROUNDS.map((bg) => {
@@ -871,8 +885,8 @@ export function ScreenStudioView({
                   return (
                     <div
                       key={bg.id}
-                      className={`rounded-md overflow-hidden border bg-[#121824] ${
-                        selected ? 'border-amber-400' : 'border-[#263042]'
+                      className={`rounded-md overflow-hidden border bg-slate-50 dark:bg-[#121824] ${
+                        selected ? 'border-amber-500' : 'border-slate-200 dark:border-[#263042]'
                       }`}
                     >
                       <div className="relative h-16 bg-black overflow-hidden">
@@ -886,7 +900,7 @@ export function ScreenStudioView({
                           <span className="text-[11px] font-medium text-slate-100 truncate">{bg.name}</span>
                         </div>
                       </div>
-                      <div className="grid grid-cols-2 divide-x divide-[#1F2937] text-[11px]">
+                      <div className="grid grid-cols-2 divide-x divide-slate-200 dark:divide-[#1F2937] text-[11px]">
                         <button
                           onClick={() =>
                             updateActiveScreen((s) => ({
@@ -895,7 +909,7 @@ export function ScreenStudioView({
                               backgroundImage: bg.url,
                             }))
                           }
-                          className="py-1.5 text-slate-300 hover:bg-[#1A2233] hover:text-white transition-colors"
+                          className="py-1.5 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-[#1A2233] hover:text-slate-950 dark:hover:text-white transition-colors"
                         >
                           Screen BG
                         </button>
@@ -908,7 +922,7 @@ export function ScreenStudioView({
                             updateActiveScreen((scr) => ({...scr, widgets: [...scr.widgets, created]}));
                             setSelectedWidgetId(created.id);
                           }}
-                          className="py-1.5 text-amber-300 hover:bg-[#1A2233] transition-colors"
+                          className="py-1.5 text-amber-700 dark:text-amber-300 hover:bg-slate-200 dark:hover:bg-[#1A2233] transition-colors font-medium"
                         >
                           Add Block
                         </button>
@@ -921,8 +935,8 @@ export function ScreenStudioView({
                   onClick={() => updateActiveScreen((s) => ({...s, backgroundType: 'solid'}))}
                   className={`w-full py-2 px-3 rounded-md border text-xs text-left ${
                     activeScreen.backgroundType === 'solid'
-                      ? 'border-amber-400 bg-[#171F2E] text-slate-100'
-                      : 'border-[#263042] bg-[#121824] text-slate-300'
+                      ? 'border-amber-500 bg-amber-50 dark:bg-[#171F2E] text-slate-900 dark:text-slate-100'
+                      : 'border-slate-200 dark:border-[#263042] bg-slate-50 dark:bg-[#121824] text-slate-700 dark:text-slate-300'
                   }`}
                 >
                   Plain Solid Background
@@ -938,21 +952,21 @@ export function ScreenStudioView({
           onClick={(e) => {
             if (!justDraggedRef.current && e.target === e.currentTarget) setSelectedWidgetId(null);
           }}
-          className="bg-[#080B10] flex flex-col items-center justify-center p-6 overflow-auto relative"
+          className="bg-slate-200/80 dark:bg-[#080B10] flex flex-col items-center justify-center p-6 overflow-auto relative"
         >
           <div
             onClick={(e) => e.stopPropagation()}
             className="w-full max-w-[980px] flex items-center justify-between mb-3"
           >
-            <span className="text-xs text-slate-400">
+            <span className="text-xs text-slate-600 dark:text-slate-400">
               Live values update every 2.5s. Click any block to assign an entity, image, or ApexCharts code.
             </span>
             <button
               onClick={() => setShowGrid((g) => !g)}
               className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs border transition-colors ${
                 showGrid
-                  ? 'bg-[#1A2233] border-slate-600 text-slate-100'
-                  : 'bg-[#111622] border-[#1F2937] text-slate-400 hover:text-slate-200'
+                  ? 'bg-white dark:bg-[#1A2233] border-slate-400 dark:border-slate-600 text-slate-900 dark:text-slate-100'
+                  : 'bg-white/80 dark:bg-[#111622] border-slate-300 dark:border-[#1F2937] text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
               }`}
             >
               <Grid className="w-3.5 h-3.5" />
@@ -962,10 +976,10 @@ export function ScreenStudioView({
 
           <div
             onClick={(e) => e.stopPropagation()}
-            className="rounded-xl p-4 sm:p-5 bg-gradient-to-b from-[#1C222E] to-[#11161F] border border-[#2C3545] shadow-2xl"
+            className="rounded-xl p-4 sm:p-5 bg-gradient-to-b from-slate-100 to-slate-200 dark:from-[#1C222E] dark:to-[#11161F] border border-slate-300 dark:border-[#2C3545] shadow-2xl"
           >
             <div className="flex items-center justify-between mb-2 px-1">
-              <span className="text-[11px] font-medium text-slate-400">
+              <span className="text-[11px] font-medium text-slate-600 dark:text-slate-400">
                 Aoostar Display · {activeScreen.name}
               </span>
               <span className="text-[11px] font-mono text-slate-500 tabular-nums">960 × 376 px</span>
@@ -1071,13 +1085,13 @@ export function ScreenStudioView({
 
           <div
             onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-[980px] flex items-center justify-between mt-4 pt-3 border-t border-[#171E2B]"
+            className="w-full max-w-[980px] flex items-center justify-between mt-4 pt-3 border-t border-slate-300 dark:border-[#171E2B]"
           >
-            <div className="text-xs text-slate-400">
-              Dwell: <span className="font-mono text-slate-200">{activeScreen.durationSec}s</span> ·{' '}
+            <div className="text-xs text-slate-600 dark:text-slate-400">
+              Dwell: <span className="font-mono text-slate-800 dark:text-slate-200">{activeScreen.durationSec}s</span> ·{' '}
               {activeScreen.widgets.length} blocks ·{' '}
               {!activeScreen.enabled ? (
-                <span className="text-amber-400">Paused (not on rotation)</span>
+                <span className="text-amber-700 dark:text-amber-400">Paused (not on rotation)</span>
               ) : (
                 <span className="text-slate-500">
                   Click Push to Screen above to deploy active screens to hardware
@@ -1099,22 +1113,25 @@ export function ScreenStudioView({
                 setSavedNotice(true);
                 window.setTimeout(() => setSavedNotice(false), 2000);
               }}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium border border-[#263042] bg-[#141A26] text-slate-200 hover:border-amber-500/60 transition-colors whitespace-nowrap shrink-0"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium border border-slate-300 dark:border-[#263042] bg-white dark:bg-[#141A26] text-slate-800 dark:text-slate-200 hover:border-amber-500/60 transition-colors whitespace-nowrap shrink-0"
             >
-              <BookmarkPlus className="w-3.5 h-3.5 text-amber-400" />
+              <BookmarkPlus className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
               {savedNotice ? 'Saved to Library' : 'Save Screen'}
             </button>
           </div>
         </main>
 
         {/* Right Drawer: Widget Inspector OR Screen Settings */}
-        <aside className="border-l border-[#1F2937] bg-[#0F131C] overflow-y-auto p-4">
+        <aside
+          data-guide="right-inspector"
+          className="border-l border-slate-200 dark:border-[#1F2937] bg-white dark:bg-[#0F131C] overflow-y-auto p-4"
+        >
           {selectedWidget ? (
             <div className="space-y-4">
-              <div className="flex items-center justify-between pb-3 border-b border-[#1F2937]">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-[#1F2937]">
                 <div>
-                  <h2 className="text-xs font-semibold text-slate-100">Edit Block</h2>
-                  <div className="text-[11px] text-slate-400 mt-0.5">
+                  <h2 className="text-xs font-semibold text-slate-900 dark:text-slate-100">Edit Block</h2>
+                  <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
                     {WIDGET_CATALOG.find((w) => w.type === selectedWidget.type)?.label ?? selectedWidget.type}
                   </div>
                 </div>
@@ -1126,7 +1143,7 @@ export function ScreenStudioView({
                     }));
                     setSelectedWidgetId(null);
                   }}
-                  className="inline-flex items-center gap-1 px-2 py-1 rounded border border-red-900/50 bg-red-950/30 text-xs text-red-300 hover:bg-red-900/40"
+                  className="inline-flex items-center gap-1 px-2 py-1 rounded border border-red-300 dark:border-red-900/50 bg-red-50 dark:bg-red-950/30 text-xs text-red-700 dark:text-red-300 hover:bg-red-100 dark:hover:bg-red-900/40"
                 >
                   <Trash2 className="w-3 h-3" />
                   Remove
@@ -1134,18 +1151,22 @@ export function ScreenStudioView({
               </div>
 
               <div>
-                <label className="block text-[11px] font-medium text-slate-400 mb-1">Title / Label</label>
+                <label className="block text-[11px] font-medium text-slate-600 dark:text-slate-400 mb-1">
+                  Title / Label
+                </label>
                 <input
                   type="text"
                   value={selectedWidget.title}
                   onChange={(e) => updateWidget(selectedWidget.id, {title: e.target.value})}
-                  className="w-full px-2.5 py-1.5 rounded bg-[#0B0E14] border border-[#263042] text-xs text-slate-100"
+                  className="w-full px-2.5 py-1.5 rounded bg-slate-50 dark:bg-[#0B0E14] border border-slate-300 dark:border-[#263042] text-xs text-slate-900 dark:text-slate-100"
                 />
               </div>
 
               {/* Block Size Preset Dropdown */}
               <div>
-                <label className="block text-[11px] font-medium text-slate-400 mb-1">Block Size</label>
+                <label className="block text-[11px] font-medium text-slate-600 dark:text-slate-400 mb-1">
+                  Block Size
+                </label>
                 <select
                   value={
                     BLOCK_SIZE_PRESETS.find(
@@ -1159,7 +1180,7 @@ export function ScreenStudioView({
                     const nextH = Math.min(preset.h, LCD_HEIGHT - selectedWidget.y);
                     updateWidget(selectedWidget.id, {w: nextW, h: nextH});
                   }}
-                  className="w-full px-2.5 py-1.5 rounded bg-[#0B0E14] border border-[#263042] text-xs text-slate-100"
+                  className="w-full px-2.5 py-1.5 rounded bg-slate-50 dark:bg-[#0B0E14] border border-slate-300 dark:border-[#263042] text-xs text-slate-900 dark:text-slate-100"
                 >
                   <option value="custom">
                     Custom ({selectedWidget.w} × {selectedWidget.h})
@@ -1175,7 +1196,7 @@ export function ScreenStudioView({
               {/* Single Entity Assignment for Number & Radial Gauge */}
               {(selectedWidget.type === 'entity_number' || selectedWidget.type === 'apex_radial') && (
                 <div>
-                  <label className="block text-[11px] font-medium text-slate-400 mb-1">
+                  <label className="block text-[11px] font-medium text-slate-600 dark:text-slate-400 mb-1">
                     Assign Exposed Entity
                   </label>
                   <select
@@ -1187,7 +1208,7 @@ export function ScreenStudioView({
                         title: ent ? ent.tag : selectedWidget.title,
                       });
                     }}
-                    className="w-full px-2.5 py-1.5 rounded bg-[#0B0E14] border border-[#263042] text-xs text-slate-100"
+                    className="w-full px-2.5 py-1.5 rounded bg-slate-50 dark:bg-[#0B0E14] border border-slate-300 dark:border-[#263042] text-xs text-slate-900 dark:text-slate-100"
                   >
                     <option value="">-- Select Entity --</option>
                     {(selectedWidget.type === 'entity_number' ? allEnabledEntities : numericEntities).map((ent) => (
@@ -1203,7 +1224,9 @@ export function ScreenStudioView({
               {/* Area vs Line Variant Toggle for Line / Area Graph */}
               {selectedWidget.type === 'apex_area' && (
                 <div>
-                  <label className="block text-[11px] font-medium text-slate-400 mb-1">Graph Style</label>
+                  <label className="block text-[11px] font-medium text-slate-600 dark:text-slate-400 mb-1">
+                    Graph Style
+                  </label>
                   <div className="grid grid-cols-2 gap-1.5">
                     {(['area', 'line'] as const).map((variant) => (
                       <button
@@ -1211,8 +1234,8 @@ export function ScreenStudioView({
                         onClick={() => updateWidget(selectedWidget.id, {chartVariant: variant})}
                         className={`py-1.5 rounded text-xs font-medium border capitalize transition-colors ${
                           (selectedWidget.chartVariant ?? 'area') === variant
-                            ? 'bg-amber-500/20 border-amber-500/60 text-amber-300'
-                            : 'bg-[#121824] border-[#263042] text-slate-300 hover:border-slate-500'
+                            ? 'bg-amber-500/20 border-amber-500/60 text-amber-700 dark:text-amber-300'
+                            : 'bg-slate-100 dark:bg-[#121824] border-slate-300 dark:border-[#263042] text-slate-700 dark:text-slate-300 hover:border-slate-400 dark:hover:border-slate-500'
                         }`}
                       >
                         {variant}
@@ -1251,7 +1274,7 @@ export function ScreenStudioView({
                 return (
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
-                      <label className="text-[11px] font-medium text-slate-400">
+                      <label className="text-[11px] font-medium text-slate-600 dark:text-slate-400">
                         Assigned Entities ({currentIds.length})
                       </label>
                     </div>
@@ -1263,10 +1286,10 @@ export function ScreenStudioView({
                           return (
                             <div
                               key={eid}
-                              className="flex items-center justify-between gap-1.5 px-2 py-1 rounded bg-[#0B0E14] border border-[#263042] text-[11px]"
+                              className="flex items-center justify-between gap-1.5 px-2 py-1 rounded bg-slate-50 dark:bg-[#0B0E14] border border-slate-200 dark:border-[#263042] text-[11px]"
                             >
                               <div className="min-w-0 flex-1">
-                                <div className="text-slate-200 truncate">{ent?.tag ?? eid}</div>
+                                <div className="text-slate-800 dark:text-slate-200 truncate">{ent?.tag ?? eid}</div>
                                 <div className="text-[10px] font-mono text-slate-500 truncate">
                                   {ent ? `${ent.rawValue}${ent.unit}` : eid}
                                 </div>
@@ -1275,7 +1298,7 @@ export function ScreenStudioView({
                                 <button
                                   onClick={() => moveId(idx, -1)}
                                   disabled={idx === 0}
-                                  className="p-0.5 text-slate-400 hover:text-white disabled:opacity-25"
+                                  className="p-0.5 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white disabled:opacity-25"
                                   title="Move up"
                                 >
                                   <ArrowUp className="w-3 h-3" />
@@ -1283,14 +1306,14 @@ export function ScreenStudioView({
                                 <button
                                   onClick={() => moveId(idx, 1)}
                                   disabled={idx === currentIds.length - 1}
-                                  className="p-0.5 text-slate-400 hover:text-white disabled:opacity-25"
+                                  className="p-0.5 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white disabled:opacity-25"
                                   title="Move down"
                                 >
                                   <ArrowDown className="w-3 h-3" />
                                 </button>
                                 <button
                                   onClick={() => setIds(currentIds.filter((id) => id !== eid))}
-                                  className="p-0.5 text-slate-400 hover:text-red-400"
+                                  className="p-0.5 text-slate-500 dark:text-slate-400 hover:text-red-500 dark:hover:text-red-400"
                                   title="Remove entity"
                                 >
                                   <X className="w-3 h-3" />
@@ -1308,7 +1331,7 @@ export function ScreenStudioView({
                         if (!e.target.value) return;
                         setIds([...currentIds, e.target.value]);
                       }}
-                      className="w-full px-2.5 py-1.5 rounded bg-[#121824] border border-[#263042] text-xs text-slate-200"
+                      className="w-full px-2.5 py-1.5 rounded bg-slate-100 dark:bg-[#121824] border border-slate-300 dark:border-[#263042] text-xs text-slate-800 dark:text-slate-200"
                     >
                       <option value="">+ Add Entity to Block...</option>
                       {availableToAdd.map((ent) => (
@@ -1328,9 +1351,9 @@ export function ScreenStudioView({
                   <button
                     onClick={() => widgetFileInputRef.current?.click()}
                     disabled={uploadingImage}
-                    className="w-full py-2 px-3 rounded border border-dashed border-slate-600 hover:border-amber-500/60 bg-[#121824] text-xs text-slate-200 flex items-center justify-center gap-2"
+                    className="w-full py-2 px-3 rounded border border-dashed border-slate-300 dark:border-slate-600 hover:border-amber-500/60 bg-slate-50 dark:bg-[#121824] text-xs text-slate-800 dark:text-slate-200 flex items-center justify-center gap-2"
                   >
-                    <Upload className="w-3.5 h-3.5 text-amber-400" />
+                    <Upload className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
                     {uploadingImage ? 'Uploading...' : 'Import Image, GIF, or Video'}
                   </button>
                   <input
@@ -1347,12 +1370,12 @@ export function ScreenStudioView({
                     }}
                   />
                   {uploadError && (
-                    <div className="px-2.5 py-1.5 rounded border border-red-900/50 bg-red-950/30 text-[11px] text-red-300">
+                    <div className="px-2.5 py-1.5 rounded border border-red-300 dark:border-red-900/50 bg-red-50 dark:bg-red-950/30 text-[11px] text-red-700 dark:text-red-300">
                       {uploadError}
                     </div>
                   )}
                   <div>
-                    <label className="block text-[11px] text-slate-400 mb-1">
+                    <label className="block text-[11px] text-slate-600 dark:text-slate-400 mb-1">
                       Select from Media Library
                     </label>
                     <select
@@ -1367,7 +1390,7 @@ export function ScreenStudioView({
                           mediaType: isVid ? 'video' : 'image',
                         });
                       }}
-                      className="w-full px-2.5 py-1.5 rounded bg-[#0B0E14] border border-[#263042] text-xs text-slate-100"
+                      className="w-full px-2.5 py-1.5 rounded bg-slate-50 dark:bg-[#0B0E14] border border-slate-300 dark:border-[#263042] text-xs text-slate-900 dark:text-slate-100"
                     >
                       <option value="">-- Choose from Media Library --</option>
                       {config.customImages.length > 0 && (
@@ -1392,7 +1415,7 @@ export function ScreenStudioView({
 
                   {config.customImages.length > 0 && (
                     <div>
-                      <div className="text-[11px] text-slate-400 mb-1.5">
+                      <div className="text-[11px] text-slate-600 dark:text-slate-400 mb-1.5">
                         Media Library Quick Pick
                       </div>
                       <div className="grid grid-cols-3 gap-1.5 max-h-36 overflow-y-auto pr-0.5">
@@ -1412,8 +1435,8 @@ export function ScreenStudioView({
                               title={item.name}
                               className={`rounded overflow-hidden border text-left transition-colors ${
                                 isSelected
-                                  ? 'border-amber-400 ring-1 ring-amber-400/50'
-                                  : 'border-[#263042] hover:border-slate-500'
+                                  ? 'border-amber-500 ring-1 ring-amber-400/50'
+                                  : 'border-slate-300 dark:border-[#263042] hover:border-slate-400 dark:hover:border-slate-500'
                               }`}
                             >
                               <div className="h-10 bg-black overflow-hidden">
@@ -1433,7 +1456,7 @@ export function ScreenStudioView({
                                   />
                                 )}
                               </div>
-                              <div className="px-1 py-0.5 bg-[#0B0E14] text-[10px] text-slate-300 truncate">
+                              <div className="px-1 py-0.5 bg-slate-100 dark:bg-[#0B0E14] text-[10px] text-slate-700 dark:text-slate-300 truncate">
                                 {item.name}
                               </div>
                             </button>
@@ -1444,13 +1467,13 @@ export function ScreenStudioView({
                   )}
 
                   <div>
-                    <label className="block text-[11px] text-slate-400 mb-1">Media Fit</label>
+                    <label className="block text-[11px] text-slate-600 dark:text-slate-400 mb-1">Media Fit</label>
                     <select
                       value={selectedWidget.imageFit ?? 'cover'}
                       onChange={(e) =>
                         updateWidget(selectedWidget.id, {imageFit: e.target.value as 'cover' | 'contain'})
                       }
-                      className="w-full px-2.5 py-1.5 rounded bg-[#0B0E14] border border-[#263042] text-xs text-slate-100"
+                      className="w-full px-2.5 py-1.5 rounded bg-slate-50 dark:bg-[#0B0E14] border border-slate-300 dark:border-[#263042] text-xs text-slate-900 dark:text-slate-100"
                     >
                       <option value="cover">Fill Box (Cover)</option>
                       <option value="contain">Fit Inside (Contain)</option>
@@ -1461,9 +1484,9 @@ export function ScreenStudioView({
 
               {/* Docker Container Images (Quick Assign inside Docker List Block) */}
               {selectedWidget.type === 'docker_list' && (
-                <div className="space-y-2 pt-2 border-t border-[#1F2937]">
+                <div className="space-y-2 pt-2 border-t border-slate-200 dark:border-[#1F2937]">
                   <div className="flex items-center justify-between">
-                    <label className="text-[11px] font-medium text-slate-400">
+                    <label className="text-[11px] font-medium text-slate-600 dark:text-slate-400">
                       Running Docker Images
                     </label>
                   </div>
@@ -1489,7 +1512,7 @@ export function ScreenStudioView({
                         return (
                           <div
                             key={c.id}
-                            className="flex items-center justify-between gap-2 px-2 py-1.5 rounded bg-[#0B0E14] border border-[#263042] text-[11px]"
+                            className="flex items-center justify-between gap-2 px-2 py-1.5 rounded bg-slate-50 dark:bg-[#0B0E14] border border-slate-200 dark:border-[#263042] text-[11px]"
                           >
                             <div className="flex items-center gap-2 min-w-0 flex-1">
                               {iconUrl ? (
@@ -1500,11 +1523,11 @@ export function ScreenStudioView({
                                   className="w-5 h-5 rounded-sm object-cover shrink-0"
                                 />
                               ) : (
-                                <span className="w-5 h-5 rounded-sm bg-[#161E2E] text-[9px] font-mono text-slate-400 flex items-center justify-center shrink-0 uppercase">
+                                <span className="w-5 h-5 rounded-sm bg-slate-200 dark:bg-[#161E2E] text-[9px] font-mono text-slate-600 dark:text-slate-400 flex items-center justify-center shrink-0 uppercase">
                                   {c.name.slice(0, 2)}
                                 </span>
                               )}
-                              <span className="text-slate-200 truncate font-mono">{c.name}</span>
+                              <span className="text-slate-800 dark:text-slate-200 truncate font-mono">{c.name}</span>
                             </div>
                             <div className="flex items-center gap-1 shrink-0">
                               <button
@@ -1512,7 +1535,7 @@ export function ScreenStudioView({
                                   dockerUploadTargetRef.current = c.name;
                                   dockerIconFileInputRef.current?.click();
                                 }}
-                                className="px-2 py-0.5 rounded bg-[#141A26] border border-[#263042] text-[10px] text-slate-200 hover:border-amber-500/60"
+                                className="px-2 py-0.5 rounded bg-slate-100 dark:bg-[#141A26] border border-slate-300 dark:border-[#263042] text-[10px] text-slate-800 dark:text-slate-200 hover:border-amber-500/60"
                               >
                                 Set
                               </button>
@@ -1525,7 +1548,7 @@ export function ScreenStudioView({
                                       return {...prev, dockerIcons: next};
                                     })
                                   }
-                                  className="p-0.5 text-slate-500 hover:text-red-400"
+                                  className="p-0.5 text-slate-500 hover:text-red-500 dark:hover:text-red-400"
                                   title="Clear icon"
                                 >
                                   <X className="w-3 h-3" />
@@ -1542,14 +1565,14 @@ export function ScreenStudioView({
               {/* Custom Text Template */}
               {selectedWidget.type === 'custom_text' && (
                 <div>
-                  <label className="block text-[11px] font-medium text-slate-400 mb-1">
+                  <label className="block text-[11px] font-medium text-slate-600 dark:text-slate-400 mb-1">
                     Text (supports {"{{entity_id}}"})
                   </label>
                   <input
                     type="text"
                     value={selectedWidget.customText ?? ''}
                     onChange={(e) => updateWidget(selectedWidget.id, {customText: e.target.value})}
-                    className="w-full px-2.5 py-1.5 rounded bg-[#0B0E14] border border-[#263042] text-xs font-mono text-slate-100"
+                    className="w-full px-2.5 py-1.5 rounded bg-slate-50 dark:bg-[#0B0E14] border border-slate-300 dark:border-[#263042] text-xs font-mono text-slate-900 dark:text-slate-100"
                   />
                   <p className="text-[10px] text-slate-500 mt-1">
                     Example: {"{{server.hostname}} · {{server.cpu_percent}}%"}
@@ -1561,13 +1584,13 @@ export function ScreenStudioView({
               {selectedWidget.type === 'custom_html' && (
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <label className="text-[11px] font-medium text-slate-300 flex items-center gap-1">
-                      <Code2 className="w-3.5 h-3.5 text-amber-400" />
+                    <label className="text-[11px] font-medium text-slate-700 dark:text-slate-300 flex items-center gap-1">
+                      <Code2 className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
                       Custom HTML &amp; CSS
                     </label>
                     <button
                       onClick={() => updateWidget(selectedWidget.id, {htmlCode: DEFAULT_HTML_CODE})}
-                      className="px-1.5 py-0.5 rounded bg-[#141A26] border border-[#263042] text-[10px] text-slate-300 hover:text-white"
+                      className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-[#141A26] border border-slate-300 dark:border-[#263042] text-[10px] text-slate-700 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white"
                     >
                       Reset Starter
                     </button>
@@ -1581,7 +1604,7 @@ export function ScreenStudioView({
                         htmlCode: `${current}\n<span>{{${e.target.value}}}</span>`,
                       });
                     }}
-                    className="w-full px-2 py-1 rounded bg-[#121824] border border-[#263042] text-[11px] text-slate-200"
+                    className="w-full px-2 py-1 rounded bg-slate-100 dark:bg-[#121824] border border-slate-300 dark:border-[#263042] text-[11px] text-slate-800 dark:text-slate-200"
                   >
                     <option value="">+ Insert Live Entity Tag...</option>
                     {allEnabledEntities.map((ent) => (
@@ -1595,11 +1618,11 @@ export function ScreenStudioView({
                     value={selectedWidget.htmlCode ?? DEFAULT_HTML_CODE}
                     onChange={(e) => updateWidget(selectedWidget.id, {htmlCode: e.target.value})}
                     spellCheck={false}
-                    className="w-full p-2.5 rounded bg-[#090C11] border border-[#263042] text-[11px] font-mono text-slate-200 focus:outline-none focus:border-amber-500 leading-relaxed"
+                    className="w-full p-2.5 rounded bg-slate-50 dark:bg-[#090C11] border border-slate-300 dark:border-[#263042] text-[11px] font-mono text-slate-800 dark:text-slate-200 focus:outline-none focus:border-amber-500 leading-relaxed"
                   />
                   <p className="text-[10px] text-slate-500 leading-snug">
-                    Use <code className="text-slate-300">&#123;&#123;entity_id&#125;&#125;</code> for live values or{' '}
-                    <code className="text-slate-300">&#123;&#123;tag:entity_id&#125;&#125;</code> for its tag label.
+                    Use <code className="text-slate-700 dark:text-slate-300">&#123;&#123;entity_id&#125;&#125;</code> for live values or{' '}
+                    <code className="text-slate-700 dark:text-slate-300">&#123;&#123;tag:entity_id&#125;&#125;</code> for its tag label.
                   </p>
                 </div>
               )}
@@ -1608,8 +1631,8 @@ export function ScreenStudioView({
               {selectedWidget.type === 'apex_custom' && (
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <label className="text-[11px] font-medium text-slate-300 flex items-center gap-1">
-                      <Code2 className="w-3.5 h-3.5 text-amber-400" />
+                    <label className="text-[11px] font-medium text-slate-700 dark:text-slate-300 flex items-center gap-1">
+                      <Code2 className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
                       ApexCharts JSON Config
                     </label>
                     <div className="flex gap-1">
@@ -1617,7 +1640,7 @@ export function ScreenStudioView({
                         <button
                           key={snip}
                           onClick={() => updateWidget(selectedWidget.id, {apexCode: APEX_SNIPPETS[snip]})}
-                          className="px-1.5 py-0.5 rounded bg-[#141A26] border border-[#263042] text-[10px] text-slate-300 hover:text-white"
+                          className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-[#141A26] border border-slate-300 dark:border-[#263042] text-[10px] text-slate-700 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white"
                         >
                           {snip}
                         </button>
@@ -1629,21 +1652,23 @@ export function ScreenStudioView({
                     value={selectedWidget.apexCode ?? DEFAULT_APEX_CODE}
                     onChange={(e) => updateWidget(selectedWidget.id, {apexCode: e.target.value})}
                     spellCheck={false}
-                    className="w-full p-2.5 rounded bg-[#090C11] border border-[#263042] text-[11px] font-mono text-slate-200 focus:outline-none focus:border-amber-500 leading-relaxed"
+                    className="w-full p-2.5 rounded bg-slate-50 dark:bg-[#090C11] border border-slate-300 dark:border-[#263042] text-[11px] font-mono text-slate-800 dark:text-slate-200 focus:outline-none focus:border-amber-500 leading-relaxed"
                   />
                   <p className="text-[10px] text-slate-500 leading-snug">
-                    Inject live data with <code className="text-slate-300">"&#123;&#123;history:server.cpu_percent&#125;&#125;"</code> or scalar <code className="text-slate-300">"&#123;&#123;server.ram_percent&#125;&#125;"</code>.
+                    Inject live data with <code className="text-slate-700 dark:text-slate-300">"&#123;&#123;history:server.cpu_percent&#125;&#125;"</code> or scalar <code className="text-slate-700 dark:text-slate-300">"&#123;&#123;server.ram_percent&#125;&#125;"</code>.
                   </p>
                 </div>
               )}
 
               {/* Colors (Swatches + Color Wheel) & Typography */}
               {selectedWidget.type !== 'image_layer' && (
-                <div className="space-y-3.5 pt-2 border-t border-[#1F2937]">
+                <div className="space-y-3.5 pt-2 border-t border-slate-200 dark:border-[#1F2937]">
                   {/* Highlight / Accent Color */}
                   <div>
                     <div className="flex items-center justify-between mb-1.5">
-                      <label className="text-[11px] font-medium text-slate-400">Highlight Color</label>
+                      <label className="text-[11px] font-medium text-slate-600 dark:text-slate-400">
+                        Highlight Color
+                      </label>
                       <span className="text-[10px] font-mono text-slate-500 uppercase">
                         {selectedWidget.accentColor}
                       </span>
@@ -1656,14 +1681,14 @@ export function ScreenStudioView({
                           style={{backgroundColor: hex}}
                           className={`w-5 h-5 rounded-full border transition-transform ${
                             selectedWidget.accentColor.toLowerCase() === hex.toLowerCase()
-                              ? 'border-white scale-110'
-                              : 'border-slate-700'
+                              ? 'border-amber-500 scale-110 ring-1 ring-amber-400'
+                              : 'border-slate-400 dark:border-slate-700'
                           }`}
                         />
                       ))}
                       <label
                         title="Custom accent color wheel"
-                        className="w-6 h-6 rounded-full border border-slate-600 overflow-hidden cursor-pointer shrink-0 relative"
+                        className="w-6 h-6 rounded-full border border-slate-400 dark:border-slate-600 overflow-hidden cursor-pointer shrink-0 relative"
                         style={{backgroundColor: selectedWidget.accentColor}}
                       >
                         <input
@@ -1680,7 +1705,9 @@ export function ScreenStudioView({
                   {selectedWidget.type !== 'divider' && (
                     <div className="space-y-2.5">
                       <div className="flex items-center justify-between">
-                        <label className="text-[11px] font-medium text-slate-400">Block Background</label>
+                        <label className="text-[11px] font-medium text-slate-600 dark:text-slate-400">
+                          Block Background
+                        </label>
                         <span className="text-[10px] font-mono text-slate-500 uppercase">
                           {selectedWidget.bgColor} · {Math.round(selectedWidget.bgOpacity * 100)}%
                         </span>
@@ -1693,14 +1720,14 @@ export function ScreenStudioView({
                             style={{backgroundColor: hex}}
                             className={`w-5 h-5 rounded-full border transition-transform ${
                               selectedWidget.bgColor.toLowerCase() === hex.toLowerCase()
-                                ? 'border-white scale-110'
-                                : 'border-slate-600'
+                                ? 'border-amber-500 scale-110 ring-1 ring-amber-400'
+                                : 'border-slate-400 dark:border-slate-600'
                             }`}
                           />
                         ))}
                         <label
                           title="Custom background color wheel"
-                          className="w-6 h-6 rounded-full border border-slate-600 overflow-hidden cursor-pointer shrink-0"
+                          className="w-6 h-6 rounded-full border border-slate-400 dark:border-slate-600 overflow-hidden cursor-pointer shrink-0"
                           style={{backgroundColor: selectedWidget.bgColor}}
                         >
                           <input
@@ -1725,18 +1752,20 @@ export function ScreenStudioView({
                       {/* Block Background Image */}
                       <div className="pt-1.5 space-y-1.5">
                         <div className="flex items-center justify-between">
-                          <label className="text-[11px] text-slate-400">Block Background Image</label>
+                          <label className="text-[11px] text-slate-600 dark:text-slate-400">
+                            Block Background Image
+                          </label>
                           <div className="flex items-center gap-1.5">
                             <button
                               onClick={() => blockBgFileInputRef.current?.click()}
-                              className="text-[10px] text-amber-300 hover:underline"
+                              className="text-[10px] text-amber-600 dark:text-amber-300 hover:underline"
                             >
                               Upload
                             </button>
                             {selectedWidget.bgImageUrl && (
                               <button
                                 onClick={() => updateWidget(selectedWidget.id, {bgImageUrl: undefined})}
-                                className="text-[10px] text-red-400 hover:underline"
+                                className="text-[10px] text-red-600 dark:text-red-400 hover:underline"
                               >
                                 Clear
                               </button>
@@ -1763,7 +1792,7 @@ export function ScreenStudioView({
                               bgImageUrl: e.target.value || undefined,
                             })
                           }
-                          className="w-full px-2 py-1.5 rounded bg-[#0B0E14] border border-[#263042] text-xs text-slate-200"
+                          className="w-full px-2 py-1.5 rounded bg-slate-50 dark:bg-[#0B0E14] border border-slate-300 dark:border-[#263042] text-xs text-slate-800 dark:text-slate-200"
                         >
                           <option value="">None (Solid / Media Library)</option>
                           {config.customImages.filter((m) => m.mediaType !== 'video').length > 0 && (
@@ -1793,7 +1822,9 @@ export function ScreenStudioView({
                   {selectedWidget.type !== 'divider' && (
                     <div>
                       <div className="flex items-center justify-between mb-1.5">
-                        <label className="text-[11px] font-medium text-slate-400">Text Color</label>
+                        <label className="text-[11px] font-medium text-slate-600 dark:text-slate-400">
+                          Text Color
+                        </label>
                         <span className="text-[10px] font-mono text-slate-500 uppercase">
                           {selectedWidget.textColor}
                         </span>
@@ -1806,14 +1837,14 @@ export function ScreenStudioView({
                             style={{backgroundColor: hex}}
                             className={`w-5 h-5 rounded-full border transition-transform ${
                               selectedWidget.textColor.toLowerCase() === hex.toLowerCase()
-                                ? 'border-white scale-110'
-                                : 'border-slate-700'
+                                ? 'border-amber-500 scale-110 ring-1 ring-amber-400'
+                                : 'border-slate-400 dark:border-slate-700'
                             }`}
                           />
                         ))}
                         <label
                           title="Custom text color wheel"
-                          className="w-6 h-6 rounded-full border border-slate-600 overflow-hidden cursor-pointer shrink-0"
+                          className="w-6 h-6 rounded-full border border-slate-400 dark:border-slate-600 overflow-hidden cursor-pointer shrink-0"
                           style={{backgroundColor: selectedWidget.textColor}}
                         >
                           <input
@@ -1831,13 +1862,15 @@ export function ScreenStudioView({
                   {selectedWidget.type !== 'divider' && (
                     <div className="grid grid-cols-2 gap-2">
                       <div>
-                        <label className="block text-[11px] font-medium text-slate-400 mb-1">Font Family</label>
+                        <label className="block text-[11px] font-medium text-slate-600 dark:text-slate-400 mb-1">
+                          Font Family
+                        </label>
                         <select
                           value={selectedWidget.fontFamily ?? 'mono'}
                           onChange={(e) =>
                             updateWidget(selectedWidget.id, {fontFamily: e.target.value as FontFamilyOption})
                           }
-                          className="w-full px-2 py-1.5 rounded bg-[#0B0E14] border border-[#263042] text-xs text-slate-100"
+                          className="w-full px-2 py-1.5 rounded bg-slate-50 dark:bg-[#0B0E14] border border-slate-300 dark:border-[#263042] text-xs text-slate-900 dark:text-slate-100"
                         >
                           <option value="mono">Monospace</option>
                           <option value="display">Display Sans</option>
@@ -1845,13 +1878,15 @@ export function ScreenStudioView({
                         </select>
                       </div>
                       <div>
-                        <label className="block text-[11px] font-medium text-slate-400 mb-1">Text Size</label>
+                        <label className="block text-[11px] font-medium text-slate-600 dark:text-slate-400 mb-1">
+                          Text Size
+                        </label>
                         <select
                           value={selectedWidget.fontSizePreset ?? 'md'}
                           onChange={(e) =>
                             updateWidget(selectedWidget.id, {fontSizePreset: e.target.value as FontSizePreset})
                           }
-                          className="w-full px-2 py-1.5 rounded bg-[#0B0E14] border border-[#263042] text-xs text-slate-100"
+                          className="w-full px-2 py-1.5 rounded bg-slate-50 dark:bg-[#0B0E14] border border-slate-300 dark:border-[#263042] text-xs text-slate-900 dark:text-slate-100"
                         >
                           <option value="sm">Small</option>
                           <option value="md">Normal</option>
@@ -1866,13 +1901,13 @@ export function ScreenStudioView({
               )}
 
               {/* Progressive Disclosure for Exact Pixel Coordinates & Borders */}
-              <div className="pt-2 border-t border-[#1F2937]">
+              <div className="pt-2 border-t border-slate-200 dark:border-[#1F2937]">
                 <button
                   onClick={() => setShowAdvancedWidget((v) => !v)}
-                  className="w-full flex items-center justify-between text-xs font-medium text-slate-300 hover:text-white py-1"
+                  className="w-full flex items-center justify-between text-xs font-medium text-slate-700 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white py-1"
                 >
                   <span className="flex items-center gap-1.5">
-                    <SlidersHorizontal className="w-3.5 h-3.5 text-slate-400" />
+                    <SlidersHorizontal className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
                     Advanced Position &amp; Borders
                   </span>
                   <ChevronDown
@@ -1892,7 +1927,9 @@ export function ScreenStudioView({
                         ] as const
                       ).map(([field, label, min, max]) => (
                         <div key={field}>
-                          <label className="block text-[11px] text-slate-400 mb-1">{label}</label>
+                          <label className="block text-[11px] text-slate-600 dark:text-slate-400 mb-1">
+                            {label}
+                          </label>
                           <input
                             type="number"
                             step={8}
@@ -1904,14 +1941,14 @@ export function ScreenStudioView({
                                 [field]: Math.max(min, Math.min(max, Number(e.target.value))),
                               })
                             }
-                            className="w-full px-2 py-1 rounded bg-[#0B0E14] border border-[#263042] text-xs font-mono text-slate-100 tabular-nums"
+                            className="w-full px-2 py-1 rounded bg-slate-50 dark:bg-[#0B0E14] border border-slate-300 dark:border-[#263042] text-xs font-mono text-slate-900 dark:text-slate-100 tabular-nums"
                           />
                         </div>
                       ))}
                     </div>
 
                     <div>
-                      <label className="block text-[11px] text-slate-400 mb-1">
+                      <label className="block text-[11px] text-slate-600 dark:text-slate-400 mb-1">
                         Border Opacity ({Math.round(selectedWidget.borderOpacity * 100)}%)
                       </label>
                       <input
@@ -1930,25 +1967,27 @@ export function ScreenStudioView({
             </div>
           ) : (
             <div className="space-y-5">
-              <div className="pb-3 border-b border-[#1F2937]">
-                <h2 className="text-xs font-semibold text-slate-100">Screen Settings</h2>
-                <p className="text-[11px] text-slate-400 mt-0.5">
+              <div className="pb-3 border-b border-slate-200 dark:border-[#1F2937]">
+                <h2 className="text-xs font-semibold text-slate-900 dark:text-slate-100">Screen Settings</h2>
+                <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-0.5">
                   Configure display timing and background readability.
                 </p>
               </div>
 
               <div>
-                <label className="block text-[11px] font-medium text-slate-400 mb-1">Screen Name</label>
+                <label className="block text-[11px] font-medium text-slate-600 dark:text-slate-400 mb-1">
+                  Screen Name
+                </label>
                 <input
                   type="text"
                   value={activeScreen.name}
                   onChange={(e) => updateActiveScreen((s) => ({...s, name: e.target.value}))}
-                  className="w-full px-2.5 py-1.5 rounded bg-[#0B0E14] border border-[#263042] text-xs text-slate-100"
+                  className="w-full px-2.5 py-1.5 rounded bg-slate-50 dark:bg-[#0B0E14] border border-slate-300 dark:border-[#263042] text-xs text-slate-900 dark:text-slate-100"
                 />
               </div>
 
               <div>
-                <label className="block text-[11px] font-medium text-slate-400 mb-1.5 flex items-center gap-1">
+                <label className="block text-[11px] font-medium text-slate-600 dark:text-slate-400 mb-1.5 flex items-center gap-1">
                   <Clock className="w-3 h-3" />
                   Show This Screen For
                 </label>
@@ -1959,8 +1998,8 @@ export function ScreenStudioView({
                       onClick={() => updateActiveScreen((s) => ({...s, durationSec: sec}))}
                       className={`py-1.5 rounded text-xs font-mono border transition-colors ${
                         activeScreen.durationSec === sec
-                          ? 'bg-amber-500/20 border-amber-500/60 text-amber-300'
-                          : 'bg-[#121824] border-[#263042] text-slate-300 hover:border-slate-500'
+                          ? 'bg-amber-500/20 border-amber-500/60 text-amber-700 dark:text-amber-300'
+                          : 'bg-slate-100 dark:bg-[#121824] border-slate-300 dark:border-[#263042] text-slate-700 dark:text-slate-300 hover:border-slate-400 dark:hover:border-slate-500'
                       }`}
                     >
                       {sec}s
@@ -1975,13 +2014,13 @@ export function ScreenStudioView({
                   onChange={(e) =>
                     updateActiveScreen((s) => ({...s, durationSec: Math.max(3, Number(e.target.value))}))
                   }
-                  className="w-full px-2.5 py-1 rounded bg-[#0B0E14] border border-[#263042] text-xs font-mono text-slate-200"
+                  className="w-full px-2.5 py-1 rounded bg-slate-50 dark:bg-[#0B0E14] border border-slate-300 dark:border-[#263042] text-xs font-mono text-slate-800 dark:text-slate-200"
                 />
               </div>
 
               {activeScreen.backgroundType === 'image' && (
                 <div>
-                  <label className="block text-[11px] font-medium text-slate-400 mb-1 flex items-center gap-1">
+                  <label className="block text-[11px] font-medium text-slate-600 dark:text-slate-400 mb-1 flex items-center gap-1">
                     <ImageIcon className="w-3 h-3" />
                     Darken Background ({Math.round(activeScreen.backgroundDim * 100)}%)
                   </label>
@@ -1999,8 +2038,8 @@ export function ScreenStudioView({
                 </div>
               )}
 
-              <label className="flex items-center justify-between py-2 px-3 rounded border border-[#1F2937] bg-[#121824] cursor-pointer">
-                <span className="text-xs text-slate-200">Include in Auto-Rotate</span>
+              <label className="flex items-center justify-between py-2 px-3 rounded border border-slate-200 dark:border-[#1F2937] bg-slate-50 dark:bg-[#121824] cursor-pointer">
+                <span className="text-xs text-slate-800 dark:text-slate-200">Include in Auto-Rotate</span>
                 <input
                   type="checkbox"
                   checked={activeScreen.enabled}
@@ -2022,12 +2061,12 @@ export function ScreenStudioView({
                 />
               </label>
 
-              <div className="pt-3 border-t border-[#1F2937] flex items-center justify-between gap-2">
+              <div className="pt-3 border-t border-slate-200 dark:border-[#1F2937] flex items-center justify-between gap-2">
                 <div className="flex items-center gap-1">
                   <button
                     onClick={() => handleMoveScreen(activeScreenIndex, -1)}
                     disabled={activeScreenIndex <= 0}
-                    className="p-1.5 rounded border border-[#263042] bg-[#121824] text-slate-300 hover:text-white disabled:opacity-30"
+                    className="p-1.5 rounded border border-slate-300 dark:border-[#263042] bg-slate-100 dark:bg-[#121824] text-slate-700 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white disabled:opacity-30"
                     title="Move earlier"
                   >
                     <ChevronLeft className="w-3.5 h-3.5" />
@@ -2035,7 +2074,7 @@ export function ScreenStudioView({
                   <button
                     onClick={() => handleMoveScreen(activeScreenIndex, 1)}
                     disabled={activeScreenIndex >= config.screens.length - 1}
-                    className="p-1.5 rounded border border-[#263042] bg-[#121824] text-slate-300 hover:text-white disabled:opacity-30"
+                    className="p-1.5 rounded border border-slate-300 dark:border-[#263042] bg-slate-100 dark:bg-[#121824] text-slate-700 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white disabled:opacity-30"
                     title="Move later"
                   >
                     <ChevronRight className="w-3.5 h-3.5" />
@@ -2044,7 +2083,7 @@ export function ScreenStudioView({
                 <button
                   onClick={() => handleDeleteScreen(activeScreen.id)}
                   disabled={config.screens.length <= 1}
-                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded border border-red-900/50 bg-red-950/30 text-xs text-red-300 hover:bg-red-900/40 disabled:opacity-30"
+                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded border border-red-300 dark:border-red-900/50 bg-red-50 dark:bg-red-950/30 text-xs text-red-700 dark:text-red-300 hover:bg-red-100 dark:hover:bg-red-900/40 disabled:opacity-30"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                   Delete
@@ -2060,32 +2099,32 @@ export function ScreenStudioView({
       {showTemplateModal && (
         <div
           onClick={() => setShowTemplateModal(false)}
-          className="fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 bg-slate-950/70 flex items-center justify-center p-4"
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-3xl max-h-[85vh] overflow-y-auto rounded-xl border border-[#263042] bg-[#0F131C] p-6 space-y-6 shadow-2xl"
+            className="w-full max-w-3xl max-h-[85vh] overflow-y-auto rounded-xl border border-slate-200 dark:border-[#263042] bg-white dark:bg-[#0F131C] p-6 space-y-6 shadow-2xl"
           >
-            <div className="flex items-center justify-between pb-3 border-b border-[#1F2937]">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-[#1F2937]">
               <div className="flex items-center gap-3">
                 {addScreenStep !== 'menu' && (
                   <button
                     onClick={() => setAddScreenStep('menu')}
-                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded border border-[#263042] bg-[#141A26] text-xs text-slate-300 hover:text-white"
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded border border-slate-300 dark:border-[#263042] bg-slate-100 dark:bg-[#141A26] text-xs text-slate-700 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white"
                   >
                     <ChevronLeft className="w-3.5 h-3.5" />
                     Back
                   </button>
                 )}
                 <div>
-                  <h2 className="text-base font-display font-semibold text-slate-100">
+                  <h2 className="text-base font-display font-semibold text-slate-900 dark:text-slate-100">
                     {addScreenStep === 'menu'
                       ? 'Add a New Screen'
                       : addScreenStep === 'saved'
                         ? 'Choose a Saved Screen'
                         : 'Choose a Template'}
                   </h2>
-                  <p className="text-xs text-slate-400 mt-0.5">
+                  <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
                     {addScreenStep === 'menu'
                       ? 'Choose how you want to create your new display screen.'
                       : addScreenStep === 'saved'
@@ -2096,7 +2135,7 @@ export function ScreenStudioView({
               </div>
               <button
                 onClick={() => setShowTemplateModal(false)}
-                className="p-1.5 rounded text-slate-400 hover:text-white"
+                className="p-1.5 rounded text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -2106,14 +2145,14 @@ export function ScreenStudioView({
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <button
                   onClick={handleCreateBlankScreen}
-                  className="text-left rounded-lg border border-[#263042] hover:border-amber-500/70 bg-[#121824] p-5 flex flex-col justify-between gap-4 transition-colors"
+                  className="text-left rounded-lg border border-slate-200 dark:border-[#263042] hover:border-amber-500/70 bg-slate-50 dark:bg-[#121824] p-5 flex flex-col justify-between gap-4 transition-colors"
                 >
-                  <div className="w-9 h-9 rounded-md border border-[#263042] bg-[#0B0E14] flex items-center justify-center text-slate-200">
+                  <div className="w-9 h-9 rounded-md border border-slate-300 dark:border-[#263042] bg-white dark:bg-[#0B0E14] flex items-center justify-center text-slate-800 dark:text-slate-200">
                     <Plus className="w-4 h-4" />
                   </div>
                   <div>
-                    <div className="text-sm font-semibold text-slate-100">Blank</div>
-                    <p className="text-xs text-slate-400 mt-1">
+                    <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">Blank</div>
+                    <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
                       Start with an empty 960×376 canvas and build from scratch.
                     </p>
                   </div>
@@ -2121,19 +2160,19 @@ export function ScreenStudioView({
 
                 <button
                   onClick={() => setAddScreenStep('saved')}
-                  className="text-left rounded-lg border border-[#263042] hover:border-amber-500/70 bg-[#121824] p-5 flex flex-col justify-between gap-4 transition-colors"
+                  className="text-left rounded-lg border border-slate-200 dark:border-[#263042] hover:border-amber-500/70 bg-slate-50 dark:bg-[#121824] p-5 flex flex-col justify-between gap-4 transition-colors"
                 >
-                  <div className="w-9 h-9 rounded-md border border-[#263042] bg-[#0B0E14] flex items-center justify-center text-amber-400">
+                  <div className="w-9 h-9 rounded-md border border-slate-300 dark:border-[#263042] bg-white dark:bg-[#0B0E14] flex items-center justify-center text-amber-600 dark:text-amber-400">
                     <BookmarkPlus className="w-4 h-4" />
                   </div>
                   <div>
-                    <div className="text-sm font-semibold text-slate-100 flex items-center justify-between gap-2">
+                    <div className="text-sm font-semibold text-slate-900 dark:text-slate-100 flex items-center justify-between gap-2">
                       <span>Saved</span>
-                      <span className="text-xs font-mono text-slate-400 tabular-nums">
+                      <span className="text-xs font-mono text-slate-500 dark:text-slate-400 tabular-nums">
                         {(config.savedScreens ?? []).length}
                       </span>
                     </div>
-                    <p className="text-xs text-slate-400 mt-1">
+                    <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
                       Reuse a screen you previously saved to your library.
                     </p>
                   </div>
@@ -2141,19 +2180,19 @@ export function ScreenStudioView({
 
                 <button
                   onClick={() => setAddScreenStep('templates')}
-                  className="text-left rounded-lg border border-[#263042] hover:border-amber-500/70 bg-[#121824] p-5 flex flex-col justify-between gap-4 transition-colors"
+                  className="text-left rounded-lg border border-slate-200 dark:border-[#263042] hover:border-amber-500/70 bg-slate-50 dark:bg-[#121824] p-5 flex flex-col justify-between gap-4 transition-colors"
                 >
-                  <div className="w-9 h-9 rounded-md border border-[#263042] bg-[#0B0E14] flex items-center justify-center text-sky-400">
+                  <div className="w-9 h-9 rounded-md border border-slate-300 dark:border-[#263042] bg-white dark:bg-[#0B0E14] flex items-center justify-center text-sky-600 dark:text-sky-400">
                     <Copy className="w-4 h-4" />
                   </div>
                   <div>
-                    <div className="text-sm font-semibold text-slate-100 flex items-center justify-between gap-2">
+                    <div className="text-sm font-semibold text-slate-900 dark:text-slate-100 flex items-center justify-between gap-2">
                       <span>Templates</span>
-                      <span className="text-xs font-mono text-slate-400 tabular-nums">
+                      <span className="text-xs font-mono text-slate-500 dark:text-slate-400 tabular-nums">
                         {PREMADE_SCREENS.length}
                       </span>
                     </div>
-                    <p className="text-xs text-slate-400 mt-1">
+                    <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
                       Choose from pre-built dashboard, Docker, and HA layouts.
                     </p>
                   </div>
@@ -2164,7 +2203,7 @@ export function ScreenStudioView({
             {addScreenStep === 'saved' && (
               <div>
                 {(config.savedScreens ?? []).length === 0 ? (
-                  <div className="rounded-lg border border-dashed border-[#263042] bg-[#0B0E14] p-8 text-center text-xs text-slate-400">
+                  <div className="rounded-lg border border-dashed border-slate-300 dark:border-[#263042] bg-slate-50 dark:bg-[#0B0E14] p-8 text-center text-xs text-slate-500 dark:text-slate-400">
                     No saved screens in your library yet. Save a screen first or pick Blank or Templates.
                   </div>
                 ) : (
@@ -2179,7 +2218,7 @@ export function ScreenStudioView({
                             enabled: true,
                           })
                         }
-                        className="group text-left rounded-lg border border-[#263042] bg-[#121824] hover:border-amber-500/60 overflow-hidden transition-colors"
+                        className="group text-left rounded-lg border border-slate-200 dark:border-[#263042] bg-slate-50 dark:bg-[#121824] hover:border-amber-500/60 overflow-hidden transition-colors"
                       >
                         <div
                           className="h-20 relative overflow-hidden"
@@ -2199,11 +2238,11 @@ export function ScreenStudioView({
                             </span>
                           </div>
                         </div>
-                        <div className="px-3 py-2.5 flex items-center justify-between text-xs text-slate-400">
+                        <div className="px-3 py-2.5 flex items-center justify-between text-xs text-slate-600 dark:text-slate-400">
                           <span className="font-mono tabular-nums">
                             {saved.screen.durationSec}s · {saved.screen.widgets.length} blocks
                           </span>
-                          <span className="inline-flex items-center gap-1 text-amber-400 font-medium">
+                          <span className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400 font-medium">
                             <Plus className="w-3 h-3" /> Add Saved
                           </span>
                         </div>
@@ -2220,7 +2259,7 @@ export function ScreenStudioView({
                   <button
                     key={preset.id}
                     onClick={() => handleAddFromPreset(preset)}
-                    className="group text-left rounded-lg border border-[#263042] bg-[#121824] hover:border-amber-500/60 overflow-hidden transition-colors"
+                    className="group text-left rounded-lg border border-slate-200 dark:border-[#263042] bg-slate-50 dark:bg-[#121824] hover:border-amber-500/60 overflow-hidden transition-colors"
                   >
                     <div className="h-20 relative bg-black overflow-hidden">
                       {preset.backgroundImage && (
@@ -2235,9 +2274,9 @@ export function ScreenStudioView({
                         <span className="text-xs font-semibold text-slate-100">{preset.name}</span>
                       </div>
                     </div>
-                    <div className="px-3 py-2.5 flex items-center justify-between text-xs text-slate-400">
+                    <div className="px-3 py-2.5 flex items-center justify-between text-xs text-slate-600 dark:text-slate-400">
                       <span>{preset.widgets.length} blocks</span>
-                      <span className="inline-flex items-center gap-1 text-amber-400 font-medium">
+                      <span className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400 font-medium">
                         <Copy className="w-3 h-3" /> Use Template
                       </span>
                     </div>
@@ -2253,45 +2292,45 @@ export function ScreenStudioView({
       {pendingDeleteScreen && (
         <div
           onClick={() => setPendingDeleteScreen(null)}
-          className="fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 bg-slate-950/70 flex items-center justify-center p-4"
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-md rounded-xl border border-[#263042] bg-[#0F131C] p-6 space-y-4 shadow-2xl"
+            className="w-full max-w-md rounded-xl border border-slate-200 dark:border-[#263042] bg-white dark:bg-[#0F131C] p-6 space-y-4 shadow-2xl"
           >
-            <div className="flex items-start justify-between gap-3 pb-3 border-b border-[#1F2937]">
+            <div className="flex items-start justify-between gap-3 pb-3 border-b border-slate-200 dark:border-[#1F2937]">
               <div>
-                <h2 className="text-base font-display font-semibold text-slate-100">
+                <h2 className="text-base font-display font-semibold text-slate-900 dark:text-slate-100">
                   Save Screen Before Deleting?
                 </h2>
-                <p className="text-xs text-slate-400 mt-1">
+                <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
                   &ldquo;{pendingDeleteScreen.name}&rdquo; is not saved in your Saved Screens library yet.
                 </p>
               </div>
               <button
                 onClick={() => setPendingDeleteScreen(null)}
-                className="p-1 rounded text-slate-400 hover:text-white"
+                className="p-1 rounded text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             <div>
-              <label className="block text-[11px] font-medium text-slate-400 mb-1">
+              <label className="block text-[11px] font-medium text-slate-600 dark:text-slate-400 mb-1">
                 Saved Screen Name
               </label>
               <input
                 type="text"
                 value={pendingDeleteName}
                 onChange={(e) => setPendingDeleteName(e.target.value)}
-                className="w-full px-3 py-2 rounded bg-[#0B0E14] border border-[#263042] text-xs text-slate-100 focus:outline-none focus:border-amber-500"
+                className="w-full px-3 py-2 rounded bg-slate-50 dark:bg-[#0B0E14] border border-slate-300 dark:border-[#263042] text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:border-amber-500"
               />
             </div>
 
             <div className="flex flex-wrap items-center justify-end gap-2 pt-2">
               <button
                 onClick={() => setPendingDeleteScreen(null)}
-                className="px-3 py-1.5 rounded border border-[#263042] bg-[#141A26] text-xs text-slate-300 hover:text-white"
+                className="px-3 py-1.5 rounded border border-slate-300 dark:border-[#263042] bg-slate-100 dark:bg-[#141A26] text-xs text-slate-700 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white"
               >
                 Cancel
               </button>
@@ -2301,7 +2340,7 @@ export function ScreenStudioView({
                   setPendingDeleteScreen(null);
                   performDeleteScreen(targetId);
                 }}
-                className="px-3 py-1.5 rounded border border-red-900/50 bg-red-950/30 text-xs font-medium text-red-300 hover:bg-red-900/40"
+                className="px-3 py-1.5 rounded border border-red-300 dark:border-red-900/50 bg-red-50 dark:bg-red-950/30 text-xs font-medium text-red-700 dark:text-red-300 hover:bg-red-100 dark:hover:bg-red-900/40"
               >
                 Delete Without Saving
               </button>

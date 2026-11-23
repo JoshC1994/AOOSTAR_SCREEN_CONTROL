@@ -115,6 +115,18 @@ export interface ShareInfo {
   smbExported: boolean;
 }
 
+export interface GpuInfo {
+  id: string;
+  name: string;
+  vendor: 'amd' | 'intel' | 'nvidia' | 'unknown';
+  tempC: number | null;
+  utilPercent: number | null;
+  freqMhz: number | null;
+  powerW: number | null;
+  vramUsedMB: number | null;
+  vramTotalMB: number | null;
+}
+
 export interface TelemetrySnapshot {
   timestamp: number;
   sourceMode: DataSourceMode;
@@ -130,6 +142,7 @@ export interface TelemetrySnapshot {
     cpuModel: string;
     cpuCores: number;
     cpuPercent: number;
+    cpuFreqMhz?: number | null;
     cpuTempC: number;
     cpuPowerW: number;
     loadAvg: [number, number, number];
@@ -167,6 +180,7 @@ export interface TelemetrySnapshot {
   fans: FanSensorInfo[];
   temps: TempSensorInfo[];
   network: NetworkInterfaceInfo[];
+  gpus: GpuInfo[];
 }
 
 export interface HomeAssistantEntity {
@@ -392,4 +406,11 @@ export interface LastFrameMeta {
   devicePath: string;
   deliveryMode: 'usb-serial' | 'virtual-buffer';
   headerHex: string;
+  chunksSent?: number;
+  totalChunks?: number;
+  initAck?: boolean;
+  powerState?: 'on' | 'off';
+  lastError?: string | null;
 }
+
+export type UiThemePreference = 'dark' | 'light' | 'system';

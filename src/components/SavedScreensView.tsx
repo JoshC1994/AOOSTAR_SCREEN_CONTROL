@@ -146,24 +146,27 @@ export function SavedScreensView({
 
   return (
     <div className="max-w-[1280px] mx-auto p-6">
-      <section className="rounded-lg border border-[#1F2937] bg-[#0F131C] p-5 space-y-3">
+      <section className="rounded-lg border border-slate-200 dark:border-[#1F2937] bg-white dark:bg-[#0F131C] p-5 space-y-3 shadow-xs dark:shadow-none">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <h1 className="text-sm font-display font-semibold text-slate-100">
+            <h1 className="text-sm font-display font-semibold text-slate-900 dark:text-slate-100">
               Saved Screens ({activeCount} active)
             </h1>
-            <p className="text-xs text-slate-400 mt-0.5">
+            <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
               Active screens rotate on the Aoostar display when you click Push to Screen in the top bar.
             </p>
           </div>
           {config.hardwareDeploy?.deployedAt && (
-            <span className="text-xs font-mono text-slate-400 tabular-nums">
+            <span className="text-xs font-mono text-slate-500 dark:text-slate-400 tabular-nums">
               Last pushed {new Date(config.hardwareDeploy.deployedAt).toLocaleTimeString()}
             </span>
           )}
         </div>
 
-        <div className="divide-y divide-[#1A2130] border border-[#1F2937] rounded-md bg-[#0B0E14]">
+        <div
+          data-guide="saved-list"
+          className="divide-y divide-slate-200 dark:divide-[#1A2130] border border-slate-200 dark:border-[#1F2937] rounded-md bg-slate-50 dark:bg-[#0B0E14]"
+        >
           {rows.map((row, idx) => {
             const canDelete = row.kind === 'library' || config.screens.length > 1;
             const displayName = row.kind === 'library' ? row.saved.name : row.screen.name;
@@ -171,7 +174,7 @@ export function SavedScreensView({
               <div key={row.key} className="px-4 py-2.5 flex items-center justify-between gap-4 text-xs">
                 <div className="flex items-center gap-3 min-w-0">
                   <span className="font-mono text-slate-500 w-5 tabular-nums">{idx + 1}.</span>
-                  <span className="font-medium text-slate-200 truncate">{displayName}</span>
+                  <span className="font-medium text-slate-800 dark:text-slate-200 truncate">{displayName}</span>
                   <span className="text-slate-500 font-mono tabular-nums whitespace-nowrap">
                     {row.screen.durationSec}s · {row.screen.widgets.length} blocks
                   </span>
@@ -181,15 +184,15 @@ export function SavedScreensView({
                     onClick={() => handleToggleActive(row)}
                     className={`px-2.5 py-1 rounded border text-[11px] font-medium transition-colors ${
                       row.active
-                        ? 'border-emerald-700/50 bg-emerald-950/30 text-emerald-300 hover:bg-emerald-950/50'
-                        : 'border-[#263042] bg-[#121824] text-slate-400 hover:text-slate-200 hover:border-slate-500'
+                        ? 'border-emerald-600/40 dark:border-emerald-700/50 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-950/50'
+                        : 'border-slate-300 dark:border-[#263042] bg-white dark:bg-[#121824] text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:border-slate-400 dark:hover:border-slate-500'
                     }`}
                   >
                     {row.active ? 'Active' : 'Paused'}
                   </button>
                   <button
                     onClick={() => handleEdit(row)}
-                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded border border-[#263042] bg-[#141A26] text-[11px] text-slate-200 hover:border-amber-500/60 transition-colors"
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded border border-slate-300 dark:border-[#263042] bg-white dark:bg-[#141A26] text-[11px] text-slate-800 dark:text-slate-200 hover:border-amber-500/60 transition-colors"
                   >
                     <Edit3 className="w-3 h-3" />
                     Edit
@@ -202,7 +205,7 @@ export function SavedScreensView({
                         ? 'Delete screen'
                         : 'At least one screen must remain available'
                     }
-                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded border border-red-900/40 bg-red-950/20 text-[11px] text-red-300 hover:bg-red-900/40 disabled:opacity-35 disabled:cursor-not-allowed transition-colors"
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded border border-red-300 dark:border-red-900/40 bg-red-50 dark:bg-red-950/20 text-[11px] text-red-700 dark:text-red-300 hover:bg-red-100 dark:hover:bg-red-900/40 disabled:opacity-35 disabled:cursor-not-allowed transition-colors"
                   >
                     <Trash2 className="w-3 h-3" />
                     Delete
