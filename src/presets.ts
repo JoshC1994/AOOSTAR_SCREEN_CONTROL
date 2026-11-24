@@ -1033,7 +1033,7 @@ export const DEFAULT_CONFIG: StudioConfig = {
     baudRate: 1500000,
     brightness: 85,
     rotation: 0,
-    autoPushEnabled: true,
+    autoPushEnabled: false,
     pushIntervalSec: 2,
     pollIntervalMs: 2500,
     sleepScheduleEnabled: true,
@@ -1043,7 +1043,7 @@ export const DEFAULT_CONFIG: StudioConfig = {
     sleepDimPercent: 5,
   },
   hardwareDeploy: {
-    deployed: true,
+    deployed: false,
     deployedAt: null,
     activeIndex: 0,
     currentScreenId: INITIAL_SCREENS[0].id,

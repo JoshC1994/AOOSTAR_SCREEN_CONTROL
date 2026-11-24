@@ -413,14 +413,78 @@ export interface LastFrameMeta {
   height: number;
   byteLength: number;
   crc16Hex: string;
+  frameDigestHex?: string;
+  crcAlgorithm?: 'none';
   devicePath: string;
-  deliveryMode: 'usb-serial' | 'virtual-buffer';
+  deliveryMode: 'asterctl' | 'usb-serial' | 'dry-run' | 'blocked' | 'error';
   headerHex: string;
   chunksSent?: number;
   totalChunks?: number;
   initAck?: boolean;
   powerState?: 'on' | 'off';
   lastError?: string | null;
+}
+
+export interface SerialLogEntry {
+  id: number;
+  timestamp: string;
+  direction: 'TX' | 'RX' | 'DRY_RUN' | 'INFO' | 'ERROR';
+  label: string;
+  byteCount: number;
+  hexPreview: string;
+  error?: string;
+}
+
+export interface AsterctlLogLine {
+  timestamp: string;
+  stream: 'stdout' | 'stderr' | 'system';
+  line: string;
+}
+
+export interface DiagnosticsSnapshot {
+  detectedDevicePath: string | null;
+  usbVidPid: string | null;
+  serialPermissions: {
+    devicePath: string | null;
+    exists: boolean;
+    readable: boolean;
+    writable: boolean;
+    modeOctal: string | null;
+    usbVidPid: string | null;
+    isAoostarMatch: boolean;
+    error: string | null;
+  };
+  detectedDevices: DetectedUsbDevice[];
+  asterctl: {
+    available: boolean;
+    binaryPath: string | null;
+    version: string | null;
+    running: boolean;
+    pid: number | null;
+    mode: 'daemon' | 'stopped';
+    cfgDir: string;
+    monitorJsonPath: string;
+    lastExitCode: number | null;
+    lastError: string | null;
+    logs: AsterctlLogLine[];
+  };
+  serialWritesEnabled: boolean;
+  emergencyStopped: boolean;
+  sessionPushArmed: boolean;
+  activeTransport: 'asterctl' | 'protocol-serial' | 'blocked';
+  lastProtocolError: string | null;
+  lastPacketPreview: string | null;
+  lastDryRunSummary: {
+    ranAt: string;
+    screenId: string;
+    screenName: string;
+    totalChunks: number;
+    totalBytesOnWire: number;
+    frameSha256Short: string;
+  } | null;
+  lastFrame: LastFrameMeta;
+  serialLogs: SerialLogEntry[];
+  dryRunLog: SerialLogEntry[];
 }
 
 export type UiThemePreference = 'dark' | 'light' | 'system';

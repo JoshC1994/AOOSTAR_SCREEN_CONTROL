@@ -1,5 +1,6 @@
 import {useCallback, useEffect, useRef, useState} from 'react';
 import {ConnectionsView} from './components/ConnectionsView.tsx';
+import {DiagnosticsView} from './components/DiagnosticsView.tsx';
 import {ExposedEntitiesView} from './components/ExposedEntitiesView.tsx';
 import {InfoView} from './components/InfoView.tsx';
 import {QuickGuideModal} from './components/QuickGuideModal.tsx';
@@ -20,7 +21,7 @@ import type {
 import {rasterizeScreenToRgbaBase64} from './utils/lcdRasterizer.ts';
 import {isScreenUnsaved, screenSignature, upsertSavedScreen} from './utils/screenSave.ts';
 
-type ActiveTab = 'screens' | 'saved' | 'entities' | 'connections' | 'settings' | 'info';
+type ActiveTab = 'screens' | 'saved' | 'entities' | 'connections' | 'settings' | 'diagnostics' | 'info';
 
 const NAV_TABS: Array<{id: ActiveTab; label: string}> = [
   {id: 'screens', label: 'Screens'},
@@ -28,6 +29,7 @@ const NAV_TABS: Array<{id: ActiveTab; label: string}> = [
   {id: 'entities', label: 'Entities'},
   {id: 'connections', label: 'Connections'},
   {id: 'settings', label: 'Settings'},
+  {id: 'diagnostics', label: 'Diagnostics'},
   {id: 'info', label: 'Info'},
 ];
 
@@ -209,21 +211,24 @@ export default function App() {
               ok: false,
               text: data.meta.lastError,
             });
-          } else if (data.meta.deliveryMode === 'usb-serial') {
-            setPushFeedback({
-              ok: true,
-              text: `Pushed ${data.meta.chunksSent}/${data.meta.totalChunks} chunks to ${data.meta.devicePath}`,
-            });
           } else {
             setPushFeedback({
               ok: true,
-              text: `Deployed ${deployList.length} screen${deployList.length > 1 ? 's' : ''} (buffer updated)`,
+              text: `Pushed via ${data.meta.deliveryMode} (${data.meta.chunksSent ?? 15360}/${data.meta.totalChunks ?? 15360} chunks) to ${data.meta.devicePath}`,
             });
           }
           window.setTimeout(() => setPushFeedback(null), 4800);
         } else {
-          setPushFeedback({ok: false, text: `Push failed (HTTP ${res.status})`});
-          window.setTimeout(() => setPushFeedback(null), 4200);
+          let errMsg = `Push failed (HTTP ${res.status})`;
+          try {
+            const errData = (await res.json()) as {error?: string; meta?: LastFrameMeta};
+            if (errData.meta) setLastFrame(errData.meta);
+            if (errData.error) errMsg = errData.error;
+          } catch {
+            // keep default HTTP status message
+          }
+          setPushFeedback({ok: false, text: errMsg});
+          window.setTimeout(() => setPushFeedback(null), 6000);
         }
       } catch {
         setPushFeedback({ok: false, text: 'Push request failed'});
@@ -453,6 +458,19 @@ export default function App() {
             telemetry={telemetry}
             lastFrame={lastFrame}
             onUpdateConfig={handleUpdateConfig}
+          />
+        )}
+
+        {activeTab === 'diagnostics' && (
+          <DiagnosticsView
+            onRefreshParent={() => {
+              void fetch('/api/hardware/devices')
+                .then((r) => r.json())
+                .then((d) => {
+                  if (d?.lastFrame) setLastFrame(d.lastFrame);
+                })
+                .catch(() => {});
+            }}
           />
         )}
 

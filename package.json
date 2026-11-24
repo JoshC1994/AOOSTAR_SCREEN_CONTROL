@@ -1,7 +1,7 @@
 {
   "name": "aoostar-display-studio",
   "private": false,
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Local-first Unraid plugin and 960x376 secondary USB LCD studio for Aoostar NAS hardware.",
   "author": "JoshC1994",
   "license": "MIT",
@@ -16,7 +16,8 @@
     "start": "node server.ts",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "test": "tsx --test tests/*.test.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

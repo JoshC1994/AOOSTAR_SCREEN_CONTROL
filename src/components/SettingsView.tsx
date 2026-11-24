@@ -679,14 +679,22 @@ export function SettingsView({config, telemetry, lastFrame, onUpdateConfig}: Set
               <span className="text-slate-500 dark:text-slate-400">Transport Mode:</span>
               <span
                 className={
-                  frameMeta?.deliveryMode === 'usb-serial'
+                  frameMeta?.deliveryMode === 'asterctl' || frameMeta?.deliveryMode === 'usb-serial'
                     ? 'text-emerald-600 dark:text-emerald-400'
-                    : 'text-amber-700 dark:text-amber-400'
+                    : frameMeta?.deliveryMode === 'error'
+                      ? 'text-rose-600 dark:text-rose-400'
+                      : 'text-amber-700 dark:text-amber-400'
                 }
               >
-                {frameMeta?.deliveryMode === 'usb-serial'
-                  ? `USB Serial (${frameMeta.devicePath})`
-                  : 'Virtual Buffer (No USB write)'}
+                {frameMeta?.deliveryMode === 'asterctl'
+                  ? `asterctl (${frameMeta.devicePath})`
+                  : frameMeta?.deliveryMode === 'usb-serial'
+                    ? `USB Serial (${frameMeta.devicePath})`
+                    : frameMeta?.deliveryMode === 'dry-run'
+                      ? 'Dry Run (No USB write)'
+                      : frameMeta?.deliveryMode === 'error'
+                        ? 'Error (No fallback write)'
+                        : 'Blocked (See Diagnostics)'}
               </span>
             </div>
             <div className="flex justify-between gap-2">
@@ -703,8 +711,8 @@ export function SettingsView({config, telemetry, lastFrame, onUpdateConfig}: Set
               </span>
             </div>
             <div className="flex justify-between gap-2">
-              <span className="text-slate-500 dark:text-slate-400">Last Checksum:</span>
-              <span className="text-amber-700 dark:text-amber-300">{frameMeta?.crc16Hex ?? 'Not pushed yet'}</span>
+              <span className="text-slate-500 dark:text-slate-400">Frame Digest / Wire CRC:</span>
+              <span className="text-amber-700 dark:text-amber-300">{frameMeta?.crc16Hex ?? 'None (no wire CRC)'}</span>
             </div>
           </div>
         </div>

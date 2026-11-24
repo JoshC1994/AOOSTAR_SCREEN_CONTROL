@@ -28,4 +28,5 @@
   <Config Name="Unraid emhttp State" Target="/var/local/emhttp" Default="/var/local/emhttp" Mode="ro" Description="Read-only Unraid array, disk, and user state" Type="Path" Display="always" Required="false" Mask="false">/var/local/emhttp</Config>
   <Config Name="Hardware Sensors (hwmon)" Target="/sys/class/hwmon" Default="/sys/class/hwmon" Mode="ro" Description="Read-only Linux thermal and fan sensor paths" Type="Path" Display="advanced" Required="false" Mask="false">/sys/class/hwmon</Config>
   <Config Name="USB LCD Device" Target="/dev/ttyACM0" Default="/dev/ttyACM0" Mode="rw" Description="Aoostar USB-UART secondary LCD device (0416:90a1)" Type="Device" Display="always" Required="false" Mask="false">/dev/ttyACM0</Config>
+  <Config Name="Enable Serial Writes" Target="AOOSTAR_ENABLE_SERIAL_WRITES" Default="false" Mode="" Description="Safety gate: set to true only after validating Dry Run on the Diagnostics tab" Type="Variable" Display="always" Required="false" Mask="false">false</Config>
 </Container>

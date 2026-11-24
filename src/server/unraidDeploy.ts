@@ -1,4 +1,4 @@
-export function generateUnraidPluginPlg(port = 3088, appVersion = '1.0.1'): string {
+export function generateUnraidPluginPlg(port = 3088, appVersion = '1.0.2'): string {
   return `<?xml version='1.0' standalone='yes'?>
 <!DOCTYPE PLUGIN [
   <!ENTITY name      "aoostar-display-studio">
@@ -148,26 +148,25 @@ export function generateUnraidCommunityAppsXml(port = 3000): string {
   <Config Name="Docker Socket" Target="/var/run/docker.sock" Default="/var/run/docker.sock" Mode="ro" Description="Read-only Docker socket" Type="Path" Display="always" Required="false" Mask="false">/var/run/docker.sock</Config>
   <Config Name="Unraid emhttp State" Target="/var/local/emhttp" Default="/var/local/emhttp" Mode="ro" Description="Read-only Unraid array state" Type="Path" Display="always" Required="false" Mask="false">/var/local/emhttp</Config>
   <Config Name="USB LCD Device" Target="/dev/ttyACM0" Default="/dev/ttyACM0" Mode="rw" Description="Aoostar USB-UART display device (0416:90a1)" Type="Device" Display="always" Required="true" Mask="false">/dev/ttyACM0</Config>
+  <Config Name="Enable Serial Writes" Target="AOOSTAR_ENABLE_SERIAL_WRITES" Default="false" Mode="" Description="Safety gate: set to true only after validating Dry Run on Diagnostics" Type="Variable" Display="always" Required="false" Mask="false">false</Config>
 </Container>`;
 }
 
 export function generateDockerCompose(): string {
   return `services:
   aoostar-display-studio:
-    image: node:22-alpine
+    build: .
     container_name: aoostar-display-studio
-    working_dir: /app
-    command: ["sh", "-c", "npm ci --omit=dev && npm run build && node server.ts"]
     restart: unless-stopped
     ports:
       - "3000:3000"
     environment:
       - NODE_ENV=production
       - PORT=3000
+      - AOOSTAR_ENABLE_SERIAL_WRITES=false
     devices:
       - /dev/ttyACM0:/dev/ttyACM0
     volumes:
-      - ./:/app
       - /mnt/user/appdata/aoostar-display-studio:/app/data
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /var/local/emhttp:/var/local/emhttp:ro

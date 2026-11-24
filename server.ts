@@ -4,18 +4,29 @@ import path from 'node:path';
 import {createServer as createViteServer} from 'vite';
 import {DEFAULT_CONFIG} from './src/presets.ts';
 import type {StudioConfig} from './src/types.ts';
+import {detectAsterctlBinary} from './src/server/aoostar/asterctl.ts';
 import {
-  encodeAndPushRgb565Frame,
+  buildDiagnosticsSnapshot,
+  clearEmergencyStop,
+  dryRunScreenFrame,
+  isSerialWritesEnvEnabled,
+  pushHardwareFrame,
+  runSafeHardwareTest,
   getLastFrameBuffer,
   getLastFrameMeta,
   scanUsbSerialDevices,
+  testAsterctlIntegration,
 } from './src/server/hardware.ts';
 import {
+  armSessionPush,
+  emergencyStopDaemon,
   getDaemonStatus,
+  isSessionPushArmed,
   resetDaemonRotation,
   runHardwareDaemonTick,
   startHardwareDaemon,
 } from './src/server/hardwareDaemon.ts';
+import {renderScreenToRgbaBuffer} from './src/server/frameRenderer.ts';
 import {
   buildExposedEntities,
   fetchHomeAssistantEntities,
@@ -138,15 +149,21 @@ async function bootstrap() {
       };
       if (
         prevDeployedScreenId &&
-        !enabledPlaylist.some((s) => s.id === prevDeployedScreenId)
+        !enabledPlaylist.some((s) => s.id === prevDeployedScreenId) &&
+        isSessionPushArmed() &&
+        isSerialWritesEnvEnabled()
       ) {
         resetDaemonRotation(0);
         void runHardwareDaemonTick(
           () => currentConfig,
           (patch) => {
             currentConfig.hardwareDeploy = {...currentConfig.hardwareDeploy, ...patch};
-          }
-        );
+          },
+          undefined,
+          {restartAsterctlDaemon: true}
+        ).catch((err) => {
+          console.error('[aoostar-config-sync] Failed to restart display pipeline:', err);
+        });
       }
     }
 
@@ -419,6 +436,7 @@ async function bootstrap() {
       lastFrame: getLastFrameMeta(),
       daemonStatus: getDaemonStatus(),
       hardwareDeploy: currentConfig.hardwareDeploy,
+      diagnostics: buildDiagnosticsSnapshot(isSessionPushArmed(), currentConfig.hardware.devicePath),
     });
   });
 
@@ -428,6 +446,145 @@ async function bootstrap() {
       lastFrame: getLastFrameMeta(),
       daemonStatus: getDaemonStatus(),
       hardwareDeploy: currentConfig.hardwareDeploy,
+      diagnostics: buildDiagnosticsSnapshot(isSessionPushArmed(), currentConfig.hardware.devicePath),
+    });
+  });
+
+  app.get('/api/diagnostics', (_req, res) => {
+    res.json(buildDiagnosticsSnapshot(isSessionPushArmed(), currentConfig.hardware.devicePath));
+  });
+
+  app.post('/api/hardware/dry-run', async (req, res) => {
+    const {screenId, rgbaBase64} = (req.body || {}) as {screenId?: string; rgbaBase64?: string};
+    try {
+      const scr =
+        currentConfig.screens.find((s) => s.id === (screenId || currentConfig.activeScreenId)) ||
+        currentConfig.screens[0];
+
+      let rgbaBuffer: Buffer;
+      if (rgbaBase64) {
+        rgbaBuffer = Buffer.from(rgbaBase64, 'base64');
+      } else {
+        const {sourceMode, agentEnabled, agentUrl, agentToken, haEnabled, haUrl, haToken, customConnections} =
+          currentConfig.integrations;
+        const [haRes, polledCustom] = await Promise.all([
+          fetchHomeAssistantEntities(haEnabled, haUrl, haToken),
+          pollCustomConnections(customConnections),
+        ]);
+        const snapshot = await resolveTelemetry(sourceMode, agentEnabled, agentUrl, agentToken, haRes.connected);
+        const exposedEntities = buildExposedEntities(
+          snapshot,
+          haRes.entities,
+          polledCustom,
+          currentConfig.entityOverrides
+        );
+        rgbaBuffer = renderScreenToRgbaBuffer({
+          screen: scr,
+          telemetry: snapshot,
+          haEntities: haRes.entities,
+          exposedEntities,
+          rotation: currentConfig.hardware.rotation,
+          blank: false,
+        });
+      }
+
+      const result = dryRunScreenFrame({
+        rgbaBuffer,
+        screenId: scr?.id || 'dry-run',
+        screenName: scr?.name || 'Dry Run Screen',
+      });
+
+      res.json({
+        ...result,
+        diagnostics: buildDiagnosticsSnapshot(isSessionPushArmed(), currentConfig.hardware.devicePath),
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({
+        error: msg,
+        diagnostics: buildDiagnosticsSnapshot(isSessionPushArmed(), currentConfig.hardware.devicePath),
+      });
+    }
+  });
+
+  app.post('/api/hardware/test-asterctl', async (req, res) => {
+    const {testRealDevice, confirmed} = (req.body || {}) as {
+      testRealDevice?: boolean;
+      confirmed?: boolean;
+    };
+    try {
+      const result = await testAsterctlIntegration({
+        requestedDevicePath: currentConfig.hardware.devicePath,
+        testRealDevice: Boolean(testRealDevice),
+        confirmed: Boolean(confirmed),
+      });
+      res.json({
+        ...result,
+        diagnostics: buildDiagnosticsSnapshot(isSessionPushArmed(), currentConfig.hardware.devicePath),
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({
+        ok: false,
+        error: msg,
+        diagnostics: buildDiagnosticsSnapshot(isSessionPushArmed(), currentConfig.hardware.devicePath),
+      });
+    }
+  });
+
+  app.post('/api/hardware/safe-test', async (req, res) => {
+    const {confirmed, mode, rgbaBase64} = (req.body || {}) as {
+      confirmed?: boolean;
+      mode?: 'display-on' | 'test-frame';
+      rgbaBase64?: string;
+    };
+    if (!confirmed) {
+      res.status(400).json({
+        error: 'Explicit confirmation is required before writing to the physical LCD.',
+      });
+      return;
+    }
+
+    try {
+      const result = await runSafeHardwareTest({
+        confirmed: true,
+        mode: mode === 'display-on' ? 'display-on' : 'test-frame',
+        devicePath: currentConfig.hardware.devicePath,
+        rgbaBuffer: rgbaBase64 ? Buffer.from(rgbaBase64, 'base64') : undefined,
+      });
+      res.json({
+        ...result,
+        diagnostics: buildDiagnosticsSnapshot(isSessionPushArmed(), currentConfig.hardware.devicePath),
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      const status = msg.includes('AOOSTAR_ENABLE_SERIAL_WRITES=false') || msg.includes('Emergency stop') ? 403 : 500;
+      res.status(status).json({
+        ok: false,
+        error: msg,
+        lastFrame: getLastFrameMeta(),
+        diagnostics: buildDiagnosticsSnapshot(isSessionPushArmed(), currentConfig.hardware.devicePath),
+      });
+    }
+  });
+
+  app.post('/api/hardware/stop-serial', async (_req, res) => {
+    await emergencyStopDaemon();
+    currentConfig.hardware.autoPushEnabled = false;
+    currentConfig.hardwareDeploy.deployed = false;
+    saveConfig(currentConfig);
+    res.json({
+      ok: true,
+      message: 'Emergency stop activated: closed serial port, stopped asterctl, and disabled auto-push.',
+      diagnostics: buildDiagnosticsSnapshot(isSessionPushArmed(), currentConfig.hardware.devicePath),
+    });
+  });
+
+  app.post('/api/hardware/clear-emergency-stop', (_req, res) => {
+    clearEmergencyStop();
+    res.json({
+      ok: true,
+      diagnostics: buildDiagnosticsSnapshot(isSessionPushArmed(), currentConfig.hardware.devicePath),
     });
   });
 
@@ -447,6 +604,16 @@ async function bootstrap() {
       ? Math.max(0, targetScreens.findIndex((s) => s.id === activeScreenId))
       : 0;
 
+    if (!isSerialWritesEnvEnabled()) {
+      res.status(403).json({
+        error:
+          'Serial writes are disabled (AOOSTAR_ENABLE_SERIAL_WRITES=false). Validate packets via Diagnostics -> Dry run first, then set AOOSTAR_ENABLE_SERIAL_WRITES=true.',
+        meta: getLastFrameMeta(),
+        diagnostics: buildDiagnosticsSnapshot(isSessionPushArmed(), currentConfig.hardware.devicePath),
+      });
+      return;
+    }
+
     currentConfig.hardwareDeploy = {
       ...currentConfig.hardwareDeploy,
       deployed: true,
@@ -458,44 +625,67 @@ async function bootstrap() {
     };
     saveConfig(currentConfig);
 
+    armSessionPush(true);
     resetDaemonRotation(startIndex);
-    const meta = await runHardwareDaemonTick(
-      () => currentConfig,
-      (patch) => {
-        currentConfig.hardwareDeploy = {...currentConfig.hardwareDeploy, ...patch};
-      },
-      rgbaBase64,
-      true
-    );
 
-    res.json({
-      meta: meta ?? getLastFrameMeta(),
-      daemonStatus: getDaemonStatus(),
-      hardwareDeploy: currentConfig.hardwareDeploy,
-    });
+    try {
+      const meta = await runHardwareDaemonTick(
+        () => currentConfig,
+        (patch) => {
+          currentConfig.hardwareDeploy = {...currentConfig.hardwareDeploy, ...patch};
+        },
+        rgbaBase64,
+        {restartAsterctlDaemon: !rgbaBase64}
+      );
+
+      res.json({
+        meta: meta ?? getLastFrameMeta(),
+        daemonStatus: getDaemonStatus(),
+        hardwareDeploy: currentConfig.hardwareDeploy,
+      });
+    } catch (err) {
+      armSessionPush(false);
+      currentConfig.hardwareDeploy.deployed = false;
+      saveConfig(currentConfig);
+      const msg = err instanceof Error ? err.message : String(err);
+      const status = msg.includes('Emergency stop') || msg.includes('AOOSTAR_ENABLE_SERIAL_WRITES=false') ? 403 : 500;
+      res.status(status).json({
+        error: msg,
+        meta: getLastFrameMeta(),
+        daemonStatus: getDaemonStatus(),
+        hardwareDeploy: currentConfig.hardwareDeploy,
+      });
+    }
   });
 
-  app.post('/api/hardware/push-frame', (req, res) => {
+  app.post('/api/hardware/push-frame', async (req, res) => {
     const {rgbaBase64, screenId, screenName} = req.body as {
       rgbaBase64?: string;
       screenId?: string;
       screenName?: string;
     };
-    const meta = encodeAndPushRgb565Frame({
-      rgbaBase64,
-      screenId: screenId || currentConfig.activeScreenId,
-      screenName: screenName || 'Active Screen',
-      devicePath: currentConfig.hardware.devicePath,
-      brightness: currentConfig.hardware.brightness,
-      forceFull: true,
-    });
-    res.json(meta);
+    try {
+      const meta = await pushHardwareFrame({
+        rgbaBase64,
+        screenId: screenId || currentConfig.activeScreenId,
+        screenName: screenName || 'Active Screen',
+        devicePath: currentConfig.hardware.devicePath,
+      });
+      res.json(meta);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      const status = msg.includes('Emergency stop') || msg.includes('AOOSTAR_ENABLE_SERIAL_WRITES=false') ? 403 : 500;
+      res.status(status).json({
+        error: msg,
+        meta: getLastFrameMeta(),
+      });
+    }
   });
 
   app.get('/api/hardware/last-frame.rgb565', (_req, res) => {
     const buf = getLastFrameBuffer();
     if (!buf) {
-      res.status(404).json({error: 'No frame pushed yet.'});
+      res.status(404).json({error: 'No frame pushed or dry-run built yet.'});
       return;
     }
     res.setHeader('Content-Type', 'application/octet-stream');
@@ -538,6 +728,14 @@ async function bootstrap() {
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`Aoostar Display Studio v${APP_VERSION} listening on http://0.0.0.0:${PORT}`);
+    const detected = scanUsbSerialDevices();
+    const bin = detectAsterctlBinary();
+    const aoostar = detected.find((d) => d.isAoostarMatch);
+    console.log(
+      `[aoostar-startup] AOOSTAR_ENABLE_SERIAL_WRITES=${isSerialWritesEnvEnabled()} | ` +
+        `asterctl=${bin.available ? `${bin.binaryPath} (${bin.version})` : `unavailable (${bin.error})`} | ` +
+        `usb=${aoostar ? `${aoostar.path} (${aoostar.vendorId}:${aoostar.productId}, rw=${aoostar.writable})` : 'not detected (0416:90a1)'}`
+    );
     startHardwareDaemon(
       () => currentConfig,
       (patch) => {
