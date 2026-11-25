@@ -23,12 +23,12 @@ export function InfoView({onOpenGuide, uiTheme, onChangeUiTheme}: InfoViewProps)
               Aoostar Display Studio
             </h1>
             <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
-              Local-first Unraid plugin &amp; 960×376 secondary LCD studio for Aoostar NAS hardware.
+              Local-first Unraid Docker utility &amp; 960×376 secondary LCD studio for Aoostar NAS hardware.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <span className="text-xs font-mono text-amber-600 dark:text-amber-400 tabular-nums">
-              Version {typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.0.2'}
+              Version {typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.0.5'}
             </span>
             <button
               onClick={onOpenGuide}
@@ -80,9 +80,18 @@ export function InfoView({onOpenGuide, uiTheme, onChangeUiTheme}: InfoViewProps)
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
           <div className="p-4 rounded bg-slate-50 dark:bg-[#0B0E14] border border-slate-200 dark:border-[#1F2937]">
             <div className="text-slate-500 dark:text-slate-400">Created &amp; Maintained By</div>
-            <div className="text-sm font-semibold text-slate-900 dark:text-slate-100 mt-1">JoshC1994</div>
+            <div className="text-sm font-semibold text-slate-900 dark:text-slate-100 mt-1">
+              <a
+                href="https://github.com/JoshC1994/AOOSTAR_SCREEN_CONTROL"
+                target="_blank"
+                rel="noreferrer"
+                className="hover:text-amber-600 dark:hover:text-amber-400 transition-colors"
+              >
+                JoshC1994 · AOOSTAR_SCREEN_CONTROL
+              </a>
+            </div>
             <div className="text-slate-600 dark:text-slate-400 mt-1">
-              Designed for Unraid Community Applications &amp; native Unraid Plugin installations.
+              Designed for Unraid Community Applications Docker containers.
             </div>
           </div>
 

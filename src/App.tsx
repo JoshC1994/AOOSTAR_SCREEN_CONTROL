@@ -1,14 +1,17 @@
 import {useCallback, useEffect, useRef, useState} from 'react';
+import {AlertTriangle, ShieldAlert, X} from 'lucide-react';
 import {ConnectionsView} from './components/ConnectionsView.tsx';
 import {DiagnosticsView} from './components/DiagnosticsView.tsx';
 import {ExposedEntitiesView} from './components/ExposedEntitiesView.tsx';
 import {InfoView} from './components/InfoView.tsx';
+import {LoginView} from './components/LoginView.tsx';
 import {QuickGuideModal} from './components/QuickGuideModal.tsx';
 import {SavedScreensView} from './components/SavedScreensView.tsx';
 import {ScreenStudioView} from './components/ScreenStudioView.tsx';
 import {SettingsView} from './components/SettingsView.tsx';
 import {DEFAULT_CONFIG} from './presets.ts';
 import type {
+  AuthStatusResponse,
   ExposedEntity,
   HardwareDeployState,
   HomeAssistantEntity,
@@ -18,7 +21,11 @@ import type {
   TelemetrySnapshot,
   UiThemePreference,
 } from './types.ts';
-import {rasterizeScreenToRgbaBase64} from './utils/lcdRasterizer.ts';
+import {
+  apiFetch,
+  fetchAuthStatus,
+  subscribeAuthRequired,
+} from './utils/apiClient.ts';
 import {isScreenUnsaved, screenSignature, upsertSavedScreen} from './utils/screenSave.ts';
 
 type ActiveTab = 'screens' | 'saved' | 'entities' | 'connections' | 'settings' | 'diagnostics' | 'info';
@@ -40,6 +47,44 @@ interface TelemetryApiResponse {
   exposedEntities: ExposedEntity[];
 }
 
+function normalizeClientConfig(raw: unknown): StudioConfig | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const candidate = raw as Partial<StudioConfig>;
+  if (!candidate.hardware || !candidate.integrations || !Array.isArray(candidate.screens)) {
+    return null;
+  }
+  return {
+    ...DEFAULT_CONFIG,
+    ...candidate,
+    hardware: {
+      ...DEFAULT_CONFIG.hardware,
+      ...candidate.hardware,
+    },
+    integrations: {
+      ...DEFAULT_CONFIG.integrations,
+      ...candidate.integrations,
+      customConnections: Array.isArray(candidate.integrations.customConnections)
+        ? candidate.integrations.customConnections
+        : [],
+    },
+    entityOverrides: candidate.entityOverrides ?? {},
+    dockerIcons: candidate.dockerIcons ?? {},
+    screens: candidate.screens.length > 0 ? candidate.screens : DEFAULT_CONFIG.screens,
+    savedScreens: Array.isArray(candidate.savedScreens)
+      ? candidate.savedScreens
+      : DEFAULT_CONFIG.savedScreens,
+    hardwareDeploy: {
+      ...DEFAULT_CONFIG.hardwareDeploy,
+      ...(candidate.hardwareDeploy ?? {}),
+      screens:
+        Array.isArray(candidate.hardwareDeploy?.screens) && candidate.hardwareDeploy.screens.length > 0
+          ? candidate.hardwareDeploy.screens
+          : DEFAULT_CONFIG.screens,
+    },
+    customImages: Array.isArray(candidate.customImages) ? candidate.customImages : [],
+  };
+}
+
 export default function App() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('screens');
   const [uiTheme, setUiTheme] = useState<UiThemePreference>(() => {
@@ -53,6 +98,17 @@ export default function App() {
   });
   const [config, setConfig] = useState<StudioConfig>(DEFAULT_CONFIG);
   const [configLoaded, setConfigLoaded] = useState(false);
+  const [authChecked, setAuthChecked] = useState(false);
+  const [authStatus, setAuthStatus] = useState<AuthStatusResponse | null>(null);
+  const [defaultPwBannerDismissed, setDefaultPwBannerDismissed] = useState<boolean>(() => {
+    try {
+      return window.sessionStorage.getItem('aoostar_default_pw_banner_dismissed') === '1';
+    } catch {
+      return false;
+    }
+  });
+  const [showDefaultPwModal, setShowDefaultPwModal] = useState(false);
+  const [focusSecurityCounter, setFocusSecurityCounter] = useState(0);
   const [telemetry, setTelemetry] = useState<TelemetrySnapshot | null>(null);
   const [haEntities, setHaEntities] = useState<HomeAssistantEntity[]>([]);
   const [exposedEntities, setExposedEntities] = useState<ExposedEntity[]>([]);
@@ -94,6 +150,32 @@ export default function App() {
     }
   }, [uiTheme]);
 
+  const refreshAuthStatus = useCallback(async () => {
+    const next = await fetchAuthStatus();
+    if (next) {
+      setAuthStatus(next);
+    }
+    setAuthChecked(true);
+    return next;
+  }, []);
+
+  useEffect(() => {
+    return subscribeAuthRequired(() => {
+      setAuthStatus((prev) =>
+        prev
+          ? {...prev, authenticated: false}
+          : {
+              authenticated: false,
+              username: null,
+              usingDefaultPassword: false,
+              envOverrideActive: false,
+              defaultPasswordPublicBlocked: false,
+            }
+      );
+      void refreshAuthStatus();
+    });
+  }, [refreshAuthStatus]);
+
   const handleCloseGuide = () => {
     setShowGuide(false);
     try {
@@ -103,23 +185,64 @@ export default function App() {
     }
   };
 
+  const handleDismissDefaultPwBanner = () => {
+    setDefaultPwBannerDismissed(true);
+    try {
+      window.sessionStorage.setItem('aoostar_default_pw_banner_dismissed', '1');
+    } catch {
+      // ignore storage errors
+    }
+  };
+
+  const navigateToSecuritySettings = () => {
+    setShowDefaultPwModal(false);
+    setActiveTab('settings');
+    setFocusSecurityCounter((c) => c + 1);
+  };
+
   const saveTimeoutRef = useRef<number | null>(null);
 
-  useEffect(() => {
-    fetch('/api/config')
-      .then((r) => r.json())
-      .then((data: StudioConfig) => {
-        setConfig(data);
-        setConfigLoaded(true);
-      })
-      .catch(() => {
-        setConfigLoaded(true);
-      });
+  const loadConfig = useCallback(async () => {
+    try {
+      const r = await apiFetch('/api/config');
+      if (r.status === 401) {
+        return;
+      }
+      if (!r.ok) {
+        return;
+      }
+      const raw = await r.json();
+      const normalized = normalizeClientConfig(raw);
+      if (normalized) {
+        setConfig(normalized);
+      }
+    } catch {
+      // keep safe DEFAULT_CONFIG on network error
+    } finally {
+      setConfigLoaded(true);
+    }
   }, []);
+
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      const status = await refreshAuthStatus();
+      if (!active) return;
+      if (status?.authenticated) {
+        await loadConfig();
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [refreshAuthStatus, loadConfig]);
 
   const refreshTelemetry = useCallback(async () => {
     try {
-      const res = await fetch('/api/telemetry');
+      const res = await apiFetch('/api/telemetry');
+      if (res.status === 401) {
+        return;
+      }
       if (res.ok) {
         const data = (await res.json()) as Partial<TelemetryApiResponse>;
         if (data?.snapshot && data.snapshot.system && data.snapshot.array) {
@@ -134,26 +257,82 @@ export default function App() {
     }
   }, []);
 
+  const isAuthenticated = Boolean(authStatus?.authenticated);
+
   useEffect(() => {
-    if (!configLoaded) return;
+    if (!configLoaded || !isAuthenticated) return;
     void refreshTelemetry();
-    const intervalMs = Math.max(1000, config.hardware.pollIntervalMs ?? 2500);
+    const intervalMs = Math.max(1000, config.hardware?.pollIntervalMs ?? 2500);
     const id = window.setInterval(() => {
       void refreshTelemetry();
     }, intervalMs);
     return () => window.clearInterval(id);
-  }, [configLoaded, config.hardware.pollIntervalMs, refreshTelemetry]);
+  }, [configLoaded, isAuthenticated, config.hardware?.pollIntervalMs, refreshTelemetry]);
+
+  const handleLoginSuccess = async (result: {
+    username: string;
+    usingDefaultPassword: boolean;
+    envOverrideActive: boolean;
+  }) => {
+    await refreshAuthStatus();
+    await loadConfig();
+    await refreshTelemetry();
+    if (result.usingDefaultPassword) {
+      try {
+        if (window.sessionStorage.getItem('aoostar_default_pw_modal_shown') !== '1') {
+          window.sessionStorage.setItem('aoostar_default_pw_modal_shown', '1');
+          setShowDefaultPwModal(true);
+        }
+      } catch {
+        setShowDefaultPwModal(true);
+      }
+    } else {
+      setShowDefaultPwModal(false);
+    }
+  };
+
+  const handleSignedOut = () => {
+    setShowDefaultPwModal(false);
+    setAuthStatus((prev) =>
+      prev
+        ? {...prev, authenticated: false, username: null}
+        : {
+            authenticated: false,
+            username: null,
+            usingDefaultPassword: false,
+            envOverrideActive: false,
+            defaultPasswordPublicBlocked: false,
+          }
+    );
+    void refreshAuthStatus();
+  };
 
   const handleUpdateConfig = useCallback((updater: (prev: StudioConfig) => StudioConfig) => {
     setConfig((prev) => {
       const next = updater(prev);
       if (saveTimeoutRef.current) window.clearTimeout(saveTimeoutRef.current);
       saveTimeoutRef.current = window.setTimeout(() => {
-        void fetch('/api/config', {
+        void apiFetch('/api/config', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify(next),
-        });
+        })
+          .then(async (res) => {
+            if (!res.ok) return;
+            const updated = normalizeClientConfig(await res.json().catch(() => null));
+            if (updated) {
+              setConfig((curr) => ({
+                ...curr,
+                integrations: {
+                  ...curr.integrations,
+                  agentTokenSet: updated.integrations.agentTokenSet,
+                  haTokenSet: updated.integrations.haTokenSet,
+                  customConnections: updated.integrations.customConnections,
+                },
+              }));
+            }
+          })
+          .catch(() => {});
       }, 250);
       return next;
     });
@@ -179,21 +358,12 @@ export default function App() {
 
       setPushing(true);
       try {
-        const rgbaBase64 = await rasterizeScreenToRgbaBase64(
-          scr,
-          telemetry,
-          haEntities,
-          exposedEntities,
-          config.dockerIcons,
-          config.hardware.rotation
-        );
-        const res = await fetch('/api/hardware/deploy', {
+        const res = await apiFetch('/api/hardware/deploy', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({
             screens: deployList,
             activeScreenId: scr.id,
-            rgbaBase64,
           }),
         });
         if (res.ok) {
@@ -237,15 +407,7 @@ export default function App() {
         setPushing(false);
       }
     },
-    [
-      config.screens,
-      config.activeScreenId,
-      config.dockerIcons,
-      config.hardware.rotation,
-      telemetry,
-      haEntities,
-      exposedEntities,
-    ]
+    [config.screens, config.activeScreenId]
   );
 
   const getUnsavedScreens = useCallback(() => {
@@ -343,6 +505,20 @@ export default function App() {
     }
   };
 
+  if (!authChecked) {
+    return (
+      <div className="min-h-screen bg-slate-100 text-slate-900 dark:bg-[#0B0E14] dark:text-[#E6EDF3] flex items-center justify-center p-6">
+        <div className="text-xs font-mono text-slate-500 dark:text-slate-400">
+          Checking session...
+        </div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <LoginView authStatus={authStatus} onSuccess={(res) => void handleLoginSuccess(res)} />;
+  }
+
   return (
     <div className="min-h-screen bg-slate-100 text-slate-900 dark:bg-[#0B0E14] dark:text-[#E6EDF3] flex flex-col transition-colors">
       {/* 3-Zone Top Bar */}
@@ -414,6 +590,36 @@ export default function App() {
         ))}
       </div>
 
+      {/* Dismissible-per-session Non-Blocking Default Password Banner */}
+      {authStatus?.usingDefaultPassword && !defaultPwBannerDismissed && (
+        <div
+          role="status"
+          className="border-b border-amber-300 dark:border-amber-700/60 bg-amber-50 dark:bg-amber-950/40 px-6 py-2.5 flex flex-wrap items-center justify-between gap-3"
+        >
+          <div className="flex items-center gap-2 text-xs text-amber-900 dark:text-amber-200">
+            <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+            <span>You are using the default password. Change it in Settings &gt; Security</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={navigateToSecuritySettings}
+              className="px-3 py-1 rounded bg-amber-500 text-slate-950 hover:bg-amber-400 text-xs font-semibold whitespace-nowrap transition-colors"
+            >
+              Settings &gt; Security
+            </button>
+            <button
+              type="button"
+              onClick={handleDismissDefaultPwBanner}
+              aria-label="Dismiss default password notice"
+              className="p-1 rounded text-amber-800 dark:text-amber-300 hover:bg-amber-200/60 dark:hover:bg-amber-900/40 transition-colors"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="flex-1">
         {activeTab === 'screens' && (
           <ScreenStudioView
@@ -458,14 +664,20 @@ export default function App() {
             telemetry={telemetry}
             lastFrame={lastFrame}
             onUpdateConfig={handleUpdateConfig}
+            authStatus={authStatus}
+            onAuthStatusChanged={async () => {
+              await refreshAuthStatus();
+            }}
+            onSignedOut={handleSignedOut}
+            focusSecurityCounter={focusSecurityCounter}
           />
         )}
 
         {activeTab === 'diagnostics' && (
           <DiagnosticsView
             onRefreshParent={() => {
-              void fetch('/api/hardware/devices')
-                .then((r) => r.json())
+              void apiFetch('/api/hardware/devices')
+                .then((r) => (r.ok ? r.json() : null))
                 .then((d) => {
                   if (d?.lastFrame) setLastFrame(d.lastFrame);
                 })
@@ -484,10 +696,54 @@ export default function App() {
       </div>
 
       <QuickGuideModal
-        open={showGuide}
+        open={showGuide && !showDefaultPwModal}
         onClose={handleCloseGuide}
         onNavigateTab={(tab) => setActiveTab(tab)}
       />
+
+      {/* One-time Post-Login Default Password Prompt (non-blocking) */}
+      {showDefaultPwModal && authStatus?.usingDefaultPassword && (
+        <div
+          onClick={() => setShowDefaultPwModal(false)}
+          className="fixed inset-0 z-50 bg-slate-950/75 flex items-center justify-center p-4"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-md rounded-xl border border-slate-200 dark:border-[#263042] bg-white dark:bg-[#0F131C] p-6 space-y-4 shadow-2xl"
+          >
+            <div className="flex items-start gap-3 pb-3 border-b border-slate-200 dark:border-[#1F2937]">
+              <div className="w-9 h-9 rounded-lg bg-amber-500/15 border border-amber-500/40 flex items-center justify-center text-amber-600 dark:text-amber-400 shrink-0">
+                <ShieldAlert className="w-4 h-4" />
+              </div>
+              <div>
+                <h2 className="text-base font-display font-semibold text-slate-900 dark:text-slate-100">
+                  Change Default Password?
+                </h2>
+                <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
+                  You signed in with the default <code className="font-mono">admin / admin</code> credentials. Updating your password allows secure access from outside your local network.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-end gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setShowDefaultPwModal(false)}
+                className="px-3.5 py-2 rounded border border-slate-300 dark:border-[#263042] bg-slate-100 dark:bg-[#141A26] text-xs font-medium text-slate-800 dark:text-slate-200 hover:border-slate-400 dark:hover:border-slate-500"
+              >
+                Remind me later
+              </button>
+              <button
+                type="button"
+                onClick={navigateToSecuritySettings}
+                className="px-4 py-2 rounded bg-amber-500 text-slate-950 hover:bg-amber-400 text-xs font-semibold transition-colors"
+              >
+                Change now
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Unsaved Screen Prompt (Tab Switch or Push to Screen) */}
       {pendingSavePrompt && (

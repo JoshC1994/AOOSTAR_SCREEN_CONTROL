@@ -8,13 +8,13 @@
   <Shell>bash</Shell>
   <Privileged>false</Privileged>
   <Support>https://forums.unraid.net/</Support>
-  <Project>https://github.com/JoshC1994/aoostar-display-studio</Project>
-  <Overview>Local-first 960x376 USB LCD Studio and Unraid telemetry engine for Aoostar NAS hardware (WTR MAX / GEM12+ PRO) by JoshC1994. Replaces proprietary OEM software with direct USB-UART streaming, drag-and-drop screen design, ApexCharts, custom HTML/images/video, and Home Assistant integration.</Overview>
-  <Description>Aoostar Display Studio gives you full local control over the 960x376 secondary USB-UART display (VID 0x0416, PID 0x90A1) on Aoostar NAS hardware without any proprietary cloud software.[br][br][b]Features:[/b][br]- Drag-and-drop 960x376 screen designer with Blank, Saved, and Template screen workflows[br]- Live Unraid server telemetry (CPU, RAM, array disks, thermals, Docker containers, tasks, SMB users)[br]- Exposed Entities registry for custom tag/unit naming and 1-click placement[br]- Home Assistant and custom local HTTP/JSON endpoint integration[br]- Autonomous background daemon that continues updating and rotating screens automatically across restarts[br]- Brightness, orientation, and overnight sleep schedule controls</Description>
+  <Project>https://github.com/JoshC1994/AOOSTAR_SCREEN_CONTROL</Project>
+  <Overview>Local-first 960x376 USB LCD Studio and Unraid telemetry engine for Aoostar NAS hardware (WTR MAX / GEM12+ PRO) by JoshC1994. Replaces proprietary OEM software with async diff-cached USB-UART streaming, drag-and-drop screen design, server-side rendering, custom raster/video media, and Home Assistant integration.</Overview>
+  <Description>Aoostar Display Studio gives you full local control over the 960x376 secondary USB-UART display (VID 0x0416, PID 0x90A1) on Aoostar NAS hardware without any proprietary cloud software.[br][br][b]Features:[/b][br]- Drag-and-drop 960x376 screen designer with Blank, Saved, and Template screen workflows[br]- Unified headless @resvg/resvg-js server-side rendering matching preview output[br]- Live Unraid server telemetry (CPU, GPU, RAM, array disks, thermals, Docker containers, tasks, SMB users)[br]- Home Assistant and custom local HTTP/JSON endpoint integration with outbound host protection[br]- Autonomous background daemon that auto-resumes on restart and honors sleep schedules[br]- Username/password WebUI login (default admin / admin on LAN, changeable in Settings &gt; Security) with optional script API token</Description>
   <Category>Tools:Utilities System:</Category>
   <WebUI>http://[IP]:[PORT:3000]/</WebUI>
-  <TemplateURL>https://raw.githubusercontent.com/JoshC1994/aoostar-display-studio/main/templates/aoostar-display-studio.xml</TemplateURL>
-  <Icon>https://raw.githubusercontent.com/JoshC1994/aoostar-display-studio/main/icon.svg</Icon>
+  <TemplateURL>https://raw.githubusercontent.com/JoshC1994/AOOSTAR_SCREEN_CONTROL/main/templates/aoostar-display-studio.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/JoshC1994/AOOSTAR_SCREEN_CONTROL/main/icon.svg</Icon>
   <ExtraParams>--device=/dev/ttyACM0:/dev/ttyACM0</ExtraParams>
   <PostArgs/>
   <CPUset/>
@@ -23,10 +23,16 @@
   <DonateLink/>
   <Requires>Aoostar secondary USB-UART display (/dev/ttyACM0, VID 0x0416 PID 0x90A1). Works standalone in preview mode even if no display is attached.</Requires>
   <Config Name="WebUI Port" Target="3000" Default="3000" Mode="tcp" Description="Web interface port for Aoostar Display Studio" Type="Port" Display="always" Required="true" Mask="false">3000</Config>
-  <Config Name="Config &amp; Custom Media" Target="/app/data" Default="/mnt/user/appdata/aoostar-display-studio" Mode="rw" Description="Persistent configuration, saved screens, entity tags, and uploaded images/videos" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/aoostar-display-studio</Config>
-  <Config Name="Docker Socket" Target="/var/run/docker.sock" Default="/var/run/docker.sock" Mode="ro" Description="Read-only Docker socket for monitoring running containers" Type="Path" Display="always" Required="false" Mask="false">/var/run/docker.sock</Config>
+  <Config Name="Config &amp; Custom Media" Target="/app/data" Default="/mnt/user/appdata/aoostar-display-studio" Mode="rw" Description="Persistent configuration (0600), hashed credentials (credentials.json), saved screens, and uploaded media" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/aoostar-display-studio</Config>
+  <Config Name="Docker Socket" Target="/var/run/docker.sock" Default="/var/run/docker.sock" Mode="ro" Description="Read-only Docker socket (or point DOCKER_HOST at a socket proxy)" Type="Path" Display="always" Required="false" Mask="false">/var/run/docker.sock</Config>
   <Config Name="Unraid emhttp State" Target="/var/local/emhttp" Default="/var/local/emhttp" Mode="ro" Description="Read-only Unraid array, disk, and user state" Type="Path" Display="always" Required="false" Mask="false">/var/local/emhttp</Config>
   <Config Name="Hardware Sensors (hwmon)" Target="/sys/class/hwmon" Default="/sys/class/hwmon" Mode="ro" Description="Read-only Linux thermal and fan sensor paths" Type="Path" Display="advanced" Required="false" Mask="false">/sys/class/hwmon</Config>
   <Config Name="USB LCD Device" Target="/dev/ttyACM0" Default="/dev/ttyACM0" Mode="rw" Description="Aoostar USB-UART secondary LCD device (0416:90a1)" Type="Device" Display="always" Required="false" Mask="false">/dev/ttyACM0</Config>
   <Config Name="Enable Serial Writes" Target="AOOSTAR_ENABLE_SERIAL_WRITES" Default="false" Mode="" Description="Safety gate: set to true only after validating Dry Run on the Diagnostics tab" Type="Variable" Display="always" Required="false" Mask="false">false</Config>
+  <Config Name="Admin Username (Optional Override)" Target="AOOSTAR_ADMIN_USER" Default="" Mode="" Description="Optional static login username (defaults to admin when AOOSTAR_ADMIN_PASSWORD is unset)" Type="Variable" Display="advanced" Required="false" Mask="false"/>
+  <Config Name="Admin Password (Optional Override)" Target="AOOSTAR_ADMIN_PASSWORD" Default="" Mode="" Description="Optional static login password overriding data/credentials.json and disabling the default admin/admin credentials" Type="Variable" Display="advanced" Required="false" Mask="true"/>
+  <Config Name="API Token for Scripts (Optional)" Target="AOOSTAR_API_TOKEN" Default="" Mode="" Description="Optional Bearer token for automation scripts (also creatable/rotatable in Settings &gt; Security)" Type="Variable" Display="advanced" Required="false" Mask="true"/>
+  <Config Name="Allow Default Password Publicly" Target="AOOSTAR_ALLOW_DEFAULT_PASSWORD_PUBLIC" Default="false" Mode="" Description="Allow default admin/admin login from non-private IPs (not recommended; change password in Settings &gt; Security instead)" Type="Variable" Display="advanced" Required="false" Mask="false">false</Config>
+  <Config Name="Allowed Reverse Proxy Hosts" Target="AOOSTAR_ALLOWED_HOSTS" Default="" Mode="" Description="Comma-separated Host headers allowed when accessed behind a reverse proxy (e.g. lcd.home.arpa)" Type="Variable" Display="advanced" Required="false" Mask="false"/>
+  <Config Name="Trust Reverse Proxy Headers" Target="AOOSTAR_TRUST_PROXY" Default="false" Mode="" Description="Set to true when running behind Nginx Proxy Manager, SWAG, or Unraid reverse proxy" Type="Variable" Display="advanced" Required="false" Mask="false">false</Config>
 </Container>

@@ -80,6 +80,37 @@ export function rgbaToRgb565Le(
 }
 
 /**
+ * Software brightness dimming applied to an RGBA frame BEFORE RGB565 LE conversion.
+ * When brightnessPercent >= 100, returns a byte-identical copy of the input RGBA buffer.
+ */
+export function applyBrightnessScaleRgba(
+  rgbaBuffer: Uint8Array,
+  brightnessPercent: number,
+  width = DISPLAY_WIDTH,
+  height = DISPLAY_HEIGHT
+): Buffer {
+  const expected = width * height * 4;
+  if (rgbaBuffer.length < expected) {
+    throw new Error(
+      `Invalid RGBA buffer length: expected at least ${expected} bytes, got ${rgbaBuffer.length}`
+    );
+  }
+  const pct = Number.isFinite(brightnessPercent) ? Math.max(0, Math.min(100, brightnessPercent)) : 100;
+  if (pct >= 100) {
+    return Buffer.from(rgbaBuffer.subarray(0, expected));
+  }
+  const scale = pct / 100;
+  const out = Buffer.allocUnsafe(expected);
+  for (let i = 0; i < expected; i += 4) {
+    out[i] = Math.round(rgbaBuffer[i] * scale);
+    out[i + 1] = Math.round(rgbaBuffer[i + 1] * scale);
+    out[i + 2] = Math.round(rgbaBuffer[i + 2] * scale);
+    out[i + 3] = rgbaBuffer[i + 3];
+  }
+  return out;
+}
+
+/**
  * Exact chunk packet construction from crates/asterctl-lcd/src/aoo_screen.rs (`AooScreen::send_image`):
  *   HEADER (8 bytes) + offset (u32 LE, 4 bytes) + rgb565 chunk (47 bytes) = 59 bytes.
  * No CRC bytes are appended or inserted.
@@ -96,7 +127,7 @@ export function buildDataChunkPacket(byteOffset: number, chunkPayload: Uint8Arra
   const packet = Buffer.allocUnsafe(8 + 4 + chunkPayload.length);
   CHUNK_HEADER.copy(packet, 0);
   packet.writeUInt32LE(byteOffset >>> 0, 8);
-  Buffer.from(chunkPayload).copy(packet, 12);
+  Buffer.from(chunkPayload.buffer, chunkPayload.byteOffset, chunkPayload.byteLength).copy(packet, 12);
   return packet;
 }
 
@@ -142,6 +173,118 @@ export function buildFramePacketSequence(rgb565Le: Uint8Array): EncodedFramePack
     headerEnd: Buffer.from(HEADER_END),
     totalBytesOnWire,
     frameSha256Short,
+  };
+}
+
+export interface DiffEncodedFramePackets extends EncodedFramePackets {
+  changedChunkIndices: number[];
+  changedChunkCount: number;
+  totalChunks: number;
+  fullSync: boolean;
+}
+
+/**
+ * Computes changed 47-byte chunk indices against `prevRgb565` without allocating per-packet Buffers.
+ */
+export function computeDiffChunkIndices(
+  prevRgb565: Uint8Array | null,
+  nextRgb565: Uint8Array,
+  forceFull = false
+): {changedIndices: number[]; fullSync: boolean; frameSha256Short: string} {
+  if (nextRgb565.length !== EXPECTED_RGB565_BYTES) {
+    throw new Error(
+      `Invalid RGB565 frame length: expected ${EXPECTED_RGB565_BYTES} bytes (${DISPLAY_WIDTH}x${DISPLAY_HEIGHT}x2), got ${nextRgb565.length}`
+    );
+  }
+  const hasValidPrev = Boolean(prevRgb565 && prevRgb565.length === EXPECTED_RGB565_BYTES);
+  const fullSync = forceFull || !hasValidPrev;
+
+  const changedIndices: number[] = [];
+  if (fullSync) {
+    for (let idx = 0; idx < EXPECTED_TOTAL_CHUNKS; idx++) {
+      changedIndices.push(idx);
+    }
+  } else if (prevRgb565) {
+    for (let idx = 0; idx < EXPECTED_TOTAL_CHUNKS; idx++) {
+      const offset = idx * IMG_CHUNK_SIZE;
+      for (let j = 0; j < IMG_CHUNK_SIZE; j++) {
+        if (prevRgb565[offset + j] !== nextRgb565[offset + j]) {
+          changedIndices.push(idx);
+          break;
+        }
+      }
+    }
+  }
+
+  const frameSha256Short = crypto
+    .createHash('sha256')
+    .update(nextRgb565)
+    .digest('hex')
+    .slice(0, 12)
+    .toUpperCase();
+
+  return {changedIndices, fullSync, frameSha256Short};
+}
+
+/**
+ * Packs a slice of chunk indices directly into a single contiguous wire buffer (N * 59 bytes).
+ */
+export function buildChunkPacketBatch(
+  rgb565Le: Uint8Array,
+  chunkIndices: number[],
+  startIdx: number,
+  endIdx: number
+): Buffer {
+  const count = Math.max(0, endIdx - startIdx);
+  const batch = Buffer.allocUnsafe(count * DATA_CHUNK_PACKET_SIZE);
+  const src = Buffer.from(rgb565Le.buffer, rgb565Le.byteOffset, rgb565Le.byteLength);
+
+  for (let i = 0; i < count; i++) {
+    const chunkIdx = chunkIndices[startIdx + i];
+    const byteOffset = chunkIdx * IMG_CHUNK_SIZE;
+    const dst = i * DATA_CHUNK_PACKET_SIZE;
+    CHUNK_HEADER.copy(batch, dst);
+    batch.writeUInt32LE(byteOffset >>> 0, dst + 8);
+    src.copy(batch, dst + 12, byteOffset, byteOffset + IMG_CHUNK_SIZE);
+  }
+  return batch;
+}
+
+/**
+ * Computes changed 47-byte RGB565 chunks against `prevRgb565` (as implemented in `aoostar-rs` frame diff cache).
+ * Wraps changed chunks in `HEADER_START` ... `HEADER_END`, or returns 0 chunks when frames are identical.
+ */
+export function buildDiffFramePacketSequence(
+  prevRgb565: Uint8Array | null,
+  nextRgb565: Uint8Array,
+  forceFull = false
+): DiffEncodedFramePackets {
+  const {changedIndices, fullSync, frameSha256Short} = computeDiffChunkIndices(
+    prevRgb565,
+    nextRgb565,
+    forceFull
+  );
+
+  const chunks: Buffer[] = new Array(changedIndices.length);
+  for (let i = 0; i < changedIndices.length; i++) {
+    const offset = changedIndices[i] * IMG_CHUNK_SIZE;
+    const slice = nextRgb565.subarray(offset, offset + IMG_CHUNK_SIZE);
+    chunks[i] = buildDataChunkPacket(offset, slice);
+  }
+
+  const totalBytesOnWire =
+    chunks.length === 0 ? 0 : HEADER_START.length + chunks.length * DATA_CHUNK_PACKET_SIZE + HEADER_END.length;
+
+  return {
+    headerStart: Buffer.from(HEADER_START),
+    chunks,
+    headerEnd: Buffer.from(HEADER_END),
+    changedChunkIndices: changedIndices,
+    changedChunkCount: chunks.length,
+    totalChunks: EXPECTED_TOTAL_CHUNKS,
+    totalBytesOnWire,
+    frameSha256Short,
+    fullSync,
   };
 }
 

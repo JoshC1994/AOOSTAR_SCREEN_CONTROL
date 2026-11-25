@@ -1,6 +1,7 @@
 import {useState} from 'react';
 import {CheckCircle2, Cpu, Globe, Monitor, Plus, RefreshCw, Server, ShieldAlert, Trash2} from 'lucide-react';
 import type {CustomConnection, StudioConfig, TelemetrySnapshot} from '../types.ts';
+import {apiFetch} from '../utils/apiClient.ts';
 
 interface ConnectionsViewProps {
   config: StudioConfig;
@@ -29,16 +30,19 @@ export function ConnectionsView({
     setTestingHa(true);
     setHaStatus(null);
     try {
-      const res = await fetch('/api/integrations/test-ha', {
+      const res = await apiFetch('/api/integrations/test-ha', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
           haUrl: config.integrations.haUrl,
-          haToken: config.integrations.haToken,
+          haToken: config.integrations.haToken || undefined,
         }),
       });
-      const data = (await res.json()) as {ok: boolean; message: string};
-      setHaStatus(data);
+      const data = (await res.json()) as {ok: boolean; status?: number; message?: string; error?: string};
+      setHaStatus({
+        ok: Boolean(data.ok),
+        message: data.message || data.error || `HTTP ${data.status ?? res.status}`,
+      });
       if (data.ok) {
         onUpdateConfig((prev) => ({
           ...prev,
@@ -234,19 +238,48 @@ export function ConnectionsView({
               />
             </div>
             <div>
-              <label className="block text-[11px] font-medium text-slate-600 dark:text-slate-400 mb-1">
-                Long-Lived Access Token
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-[11px] font-medium text-slate-600 dark:text-slate-400">
+                  Long-Lived Access Token {config.integrations.haTokenSet ? '· Saved on server' : ''}
+                </label>
+                {config.integrations.haTokenSet && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      onUpdateConfig((prev) => ({
+                        ...prev,
+                        integrations: {
+                          ...prev.integrations,
+                          haToken: '',
+                          haTokenSet: false,
+                          clearHaToken: true,
+                        },
+                      }))
+                    }
+                    className="text-[11px] text-rose-600 dark:text-rose-400 hover:underline"
+                  >
+                    Clear Saved Token
+                  </button>
+                )}
+              </div>
               <input
                 type="password"
                 value={config.integrations.haToken}
                 onChange={(e) =>
                   onUpdateConfig((prev) => ({
                     ...prev,
-                    integrations: {...prev.integrations, haToken: e.target.value},
+                    integrations: {
+                      ...prev.integrations,
+                      haToken: e.target.value,
+                      clearHaToken: false,
+                    },
                   }))
                 }
-                placeholder="eyJhbGciOi..."
+                placeholder={
+                  config.integrations.haTokenSet
+                    ? 'Saved on server (leave blank to keep)'
+                    : 'eyJhbGciOi...'
+                }
                 className="w-full px-3 py-1.5 rounded bg-slate-50 dark:bg-[#0B0E14] border border-slate-300 dark:border-[#263042] text-xs font-mono text-slate-900 dark:text-slate-100"
               />
             </div>

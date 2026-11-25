@@ -1,25 +1,25 @@
 import {execFileSync, spawn, type ChildProcess} from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import type {ExposedEntity, LcdScreen, TelemetrySnapshot} from '../../types.ts';
+import type {AsterctlLogLine} from '../../types.ts';
 import {
   DISPLAY_HEIGHT,
   DISPLAY_WIDTH,
   encodePngRgba,
+  rgbaToRgb565Le,
 } from './protocol.ts';
 import {
   canPerformRealSerialWrite,
+  closeActiveSerialTransportAsync,
   inspectSerialPermissions,
   recordSerialLog,
+  resetFrameDiffCache,
   resolveStrictAoostarDevice,
   setLastProtocolError,
+  withSerialLock,
 } from './serial.ts';
 
-export interface AsterctlLogLine {
-  timestamp: string;
-  stream: 'stdout' | 'stderr' | 'system';
-  line: string;
-}
+export type {AsterctlLogLine};
 
 export interface AsterctlStatus {
   available: boolean;
@@ -27,31 +27,15 @@ export interface AsterctlStatus {
   version: string | null;
   running: boolean;
   pid: number | null;
-  mode: 'daemon' | 'stopped';
+  mode: 'idle' | 'running' | 'absent';
   cfgDir: string;
-  monitorJsonPath: string;
   lastExitCode: number | null;
   lastError: string | null;
   logs: AsterctlLogLine[];
 }
 
 const DATA_DIR = path.resolve(process.cwd(), 'data');
-const ASTERCTL_ROOT = path.join(DATA_DIR, 'asterctl');
-const ASTERCTL_CFG_DIR = path.join(ASTERCTL_ROOT, 'cfg');
-const ASTERCTL_SENSORS_DIR = path.join(ASTERCTL_CFG_DIR, 'sensors');
-const ASTERCTL_VALUES_PATH = path.join(ASTERCTL_SENSORS_DIR, 'values.txt');
-const ASTERCTL_MAPPING_PATH = path.join(ASTERCTL_CFG_DIR, 'sensor-mapping.cfg');
-const ASTERCTL_MONITOR_JSON = path.join(ASTERCTL_CFG_DIR, 'monitor.json');
-const ASTERCTL_FONT_DIR = fs.existsSync('/app/asterctl-fonts')
-  ? '/app/asterctl-fonts'
-  : path.join(ASTERCTL_ROOT, 'fonts');
-
-const CANDIDATE_BINARIES = [
-  process.env.AOOSTAR_ASTERCTL_BIN,
-  '/usr/local/bin/asterctl',
-  '/usr/bin/asterctl',
-  path.resolve(process.cwd(), 'bin/asterctl'),
-].filter((p): p is string => Boolean(p && p.trim()));
+const ASTERCTL_DIAG_DIR = path.join(DATA_DIR, 'asterctl-diag');
 
 const MAX_ASTERCTL_LOGS = 120;
 const asterctlLogs: AsterctlLogLine[] = [];
@@ -77,25 +61,53 @@ function pushAsterctlLog(stream: AsterctlLogLine['stream'], rawLine: string) {
   }
 }
 
-export function detectAsterctlBinary(): {
+interface CachedBinaryProbe {
+  envKey: string;
   available: boolean;
   binaryPath: string | null;
   executable: boolean;
   version: string | null;
   error: string | null;
-} {
-  for (const candidate of CANDIDATE_BINARIES) {
+}
+
+let cachedBinaryProbe: CachedBinaryProbe | null = null;
+
+function getCandidateBinaries(): string[] {
+  const envBin = (process.env.AOOSTAR_ASTERCTL_BIN || '').trim();
+  if (envBin) {
+    return [envBin];
+  }
+  return [
+    '/usr/local/bin/asterctl',
+    '/usr/bin/asterctl',
+    path.resolve(process.cwd(), 'bin/asterctl'),
+  ];
+}
+
+/**
+ * Probes `asterctl --version` once per runtime (or when `AOOSTAR_ASTERCTL_BIN` changes)
+ * and caches the result so `--version` is not spawned on every status poll or call.
+ */
+export function detectAsterctlBinary(forceRefresh = false): CachedBinaryProbe {
+  const envKey = (process.env.AOOSTAR_ASTERCTL_BIN || '').trim();
+  if (!forceRefresh && cachedBinaryProbe && cachedBinaryProbe.envKey === envKey) {
+    return cachedBinaryProbe;
+  }
+
+  for (const candidate of getCandidateBinaries()) {
     if (!fs.existsSync(candidate)) continue;
     try {
       fs.accessSync(candidate, fs.constants.X_OK);
     } catch {
-      return {
+      cachedBinaryProbe = {
+        envKey,
         available: false,
         binaryPath: candidate,
         executable: false,
         version: null,
         error: `Binary at ${candidate} is not executable`,
       };
+      return cachedBinaryProbe;
     }
 
     try {
@@ -103,154 +115,55 @@ export function detectAsterctlBinary(): {
         encoding: 'utf8',
         timeout: 3000,
       }).trim();
-      return {
+      cachedBinaryProbe = {
+        envKey,
         available: true,
         binaryPath: candidate,
         executable: true,
         version: out || 'asterctl (version unknown)',
         error: null,
       };
+      return cachedBinaryProbe;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      return {
+      cachedBinaryProbe = {
+        envKey,
         available: false,
         binaryPath: candidate,
         executable: true,
         version: null,
         error: `Failed to execute ${candidate} --version: ${msg}`,
       };
+      return cachedBinaryProbe;
     }
   }
 
-  return {
+  cachedBinaryProbe = {
+    envKey,
     available: false,
     binaryPath: null,
     executable: false,
     version: null,
-    error: 'asterctl binary not found in /usr/local/bin/asterctl or AOOSTAR_ASTERCTL_BIN',
+    error: 'Optional asterctl binary not installed (live display runs natively via Node serial)',
   };
+  return cachedBinaryProbe;
 }
 
 export function getAsterctlStatus(): AsterctlStatus {
-  const bin = detectAsterctlBinary();
+  const bin = detectAsterctlBinary(false);
+  const running = Boolean(activeChild && activeChild.exitCode === null && !activeChild.killed);
   return {
     available: bin.available,
     binaryPath: bin.binaryPath,
     version: bin.version,
-    running: Boolean(activeChild && activeChild.exitCode === null && !activeChild.killed),
+    running,
     pid: activeChild?.pid ?? null,
-    mode: activeChild && activeChild.exitCode === null ? 'daemon' : 'stopped',
-    cfgDir: ASTERCTL_CFG_DIR,
-    monitorJsonPath: ASTERCTL_MONITOR_JSON,
+    mode: !bin.available ? 'absent' : running ? 'running' : 'idle',
+    cfgDir: ASTERCTL_DIAG_DIR,
     lastExitCode,
-    lastError: lastAsterctlError || bin.error,
+    lastError: lastAsterctlError || (bin.available ? null : bin.error),
     logs: [...asterctlLogs],
   };
-}
-
-function ensureAsterctlDirectories() {
-  fs.mkdirSync(ASTERCTL_CFG_DIR, {recursive: true});
-  fs.mkdirSync(ASTERCTL_SENSORS_DIR, {recursive: true});
-  fs.mkdirSync(ASTERCTL_FONT_DIR, {recursive: true});
-}
-
-export function writeAsterctlSensorSnapshot(
-  telemetry: TelemetrySnapshot,
-  exposedEntities: ExposedEntity[]
-): void {
-  ensureAsterctlDirectories();
-
-  const lines: string[] = [
-    `cpu_temperature = ${telemetry.system.cpuTempC}`,
-    `cpu_percent = ${telemetry.system.cpuPercent}`,
-    `memory_usage = ${Math.round(
-      (telemetry.system.ramUsedBytes / Math.max(1, telemetry.system.ramTotalBytes)) * 100
-    )}`,
-    `cpu_power = ${telemetry.system.cpuPowerW}`,
-    `array_used_percent = ${Math.round(
-      (telemetry.array.usedBytes / Math.max(1, telemetry.array.totalBytes)) * 100
-    )}`,
-  ];
-
-  for (const ent of exposedEntities) {
-    const safeKey = ent.id.replace(/[^a-zA-Z0-9_.-]/g, '_');
-    lines.push(`${safeKey} = ${ent.rawValue}`);
-  }
-
-  fs.writeFileSync(ASTERCTL_VALUES_PATH, `${lines.join('\n')}\n`, 'utf8');
-
-  if (!fs.existsSync(ASTERCTL_MAPPING_PATH)) {
-    const mapping = [
-      '# Aoostar Display Studio sensor mapping for asterctl',
-      'cpu_temperature: cpu_temperature',
-      'cpu_percent: cpu_percent',
-      'memory_usage: memory_usage',
-    ].join('\n');
-    fs.writeFileSync(ASTERCTL_MAPPING_PATH, `${mapping}\n`, 'utf8');
-  }
-}
-
-/**
- * Generates a monitor.json compatible with zehnm/aoostar-rs & xavtb78/aoostar-proxmox-lcd
- * and writes rendered 960x376 PNG panel assets.
- */
-export function writeAsterctlMonitorAssets(params: {
-  screens: Array<{screen: LcdScreen; rgbaBuffer: Buffer}>;
-  refreshSec?: number;
-  defaultSwitchTimeSec?: number;
-}): {monitorJsonPath: string; imagePaths: string[]} {
-  ensureAsterctlDirectories();
-
-  const activeScreens = params.screens.filter((item) => item.screen.enabled);
-  const targetList = activeScreens.length > 0 ? activeScreens : params.screens.slice(0, 1);
-  if (targetList.length === 0) {
-    throw new Error('Cannot generate monitor.json without at least one screen');
-  }
-
-  const imagePaths: string[] = [];
-  const diyPanels = targetList.map((entry, idx) => {
-    const filename = `studio_panel_${idx + 1}.png`;
-    const fullImgPath = path.join(ASTERCTL_CFG_DIR, filename);
-    const png = encodePngRgba(entry.rgbaBuffer, DISPLAY_WIDTH, DISPLAY_HEIGHT);
-    fs.writeFileSync(fullImgPath, png);
-    imagePaths.push(fullImgPath);
-
-    return {
-      id: entry.screen.id,
-      name: entry.screen.name,
-      type: 5,
-      img: filename,
-      sensor: [],
-    };
-  });
-
-  const switchSec = Math.max(
-    1,
-    targetList[0]?.screen.durationSec || params.defaultSwitchTimeSec || 15
-  );
-  const monitorConfig = {
-    setup: {
-      switchTime: String(switchSec),
-      refresh: Math.max(0.5, params.refreshSec ?? 1),
-    },
-    mianban: diyPanels.map((_p, i) => i + 1),
-    diy: diyPanels,
-  };
-
-  fs.writeFileSync(ASTERCTL_MONITOR_JSON, JSON.stringify(monitorConfig, null, 2), 'utf8');
-
-  if (!fs.existsSync(ASTERCTL_VALUES_PATH)) {
-    fs.writeFileSync(ASTERCTL_VALUES_PATH, 'cpu_temperature = 0\ncpu_percent = 0\n', 'utf8');
-  }
-  if (!fs.existsSync(ASTERCTL_MAPPING_PATH)) {
-    fs.writeFileSync(
-      ASTERCTL_MAPPING_PATH,
-      'cpu_temperature: cpu_temperature\ncpu_percent: cpu_percent\n',
-      'utf8'
-    );
-  }
-
-  return {monitorJsonPath: ASTERCTL_MONITOR_JSON, imagePaths};
 }
 
 export async function stopAsterctlProcess(): Promise<void> {
@@ -260,7 +173,7 @@ export async function stopAsterctlProcess(): Promise<void> {
   activeChild = null;
   if (proc.exitCode !== null || proc.killed) return;
 
-  pushAsterctlLog('system', `Stopping asterctl PID ${proc.pid}...`);
+  pushAsterctlLog('system', `Stopping one-shot asterctl PID ${proc.pid}...`);
   await new Promise<void>((resolve) => {
     let settled = false;
     const finish = () => {
@@ -293,122 +206,8 @@ export async function stopAsterctlProcess(): Promise<void> {
   });
 }
 
-export async function startOrRestartAsterctlDaemon(params: {
-  requestedDevicePath?: string;
-}): Promise<{pid: number; binaryPath: string; devicePath: string}> {
-  const gate = canPerformRealSerialWrite();
-  if (!gate.allowed) {
-    lastAsterctlError = gate.reason;
-    setLastProtocolError(gate.reason);
-    throw new Error(gate.reason || 'Serial writes blocked');
-  }
-
-  const bin = detectAsterctlBinary();
-  if (!bin.available || !bin.binaryPath) {
-    lastAsterctlError = bin.error || 'asterctl binary not available';
-    setLastProtocolError(lastAsterctlError);
-    throw new Error(lastAsterctlError);
-  }
-
-  const resolved = resolveStrictAoostarDevice(params.requestedDevicePath);
-  if (!resolved.devicePath) {
-    lastAsterctlError = resolved.error || 'Aoostar device (0416:90a1) not detected';
-    setLastProtocolError(lastAsterctlError);
-    throw new Error(lastAsterctlError);
-  }
-
-  await stopAsterctlProcess();
-
-  const args = [
-    '--device',
-    resolved.devicePath,
-    '--config-dir',
-    ASTERCTL_CFG_DIR,
-    '--config',
-    'monitor.json',
-    '--font-dir',
-    ASTERCTL_FONT_DIR,
-    '--sensor-path',
-    ASTERCTL_VALUES_PATH,
-    '--sensor-mapping',
-    ASTERCTL_MAPPING_PATH,
-  ];
-
-  pushAsterctlLog('system', `Starting ${bin.binaryPath} ${args.join(' ')}`);
-  recordSerialLog('INFO', 'ASTERCTL_START', 0);
-
-  const child = spawn(bin.binaryPath, args, {
-    cwd: ASTERCTL_ROOT,
-    env: {...process.env, RUST_LOG: process.env.RUST_LOG || 'info'},
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
-
-  activeChild = child;
-  lastAsterctlError = null;
-
-  child.stdout?.on('data', (chunk: Buffer) => {
-    for (const line of chunk.toString('utf8').split(/\r?\n/)) {
-      pushAsterctlLog('stdout', line);
-    }
-  });
-  child.stderr?.on('data', (chunk: Buffer) => {
-    for (const line of chunk.toString('utf8').split(/\r?\n/)) {
-      pushAsterctlLog('stderr', line);
-    }
-  });
-
-  // Wait 1.6s to confirm asterctl passes the 1-second DISPLAY_ON -> 'A' init check without exiting early
-  await new Promise<void>((resolve, reject) => {
-    let settled = false;
-    const timer = setTimeout(() => {
-      if (!settled) {
-        settled = true;
-        resolve();
-      }
-    }, 1600);
-
-    child.once('error', (err) => {
-      clearTimeout(timer);
-      if (!settled) {
-        settled = true;
-        lastAsterctlError = err.message;
-        setLastProtocolError(err.message);
-        pushAsterctlLog('system', `Failed to launch asterctl: ${err.message}`);
-        reject(err);
-      }
-    });
-
-    child.once('exit', (code, signal) => {
-      lastExitCode = code;
-      if (activeChild === child) activeChild = null;
-      const errMsg = `asterctl exited unexpectedly (code=${code}, signal=${signal})`;
-      pushAsterctlLog('system', errMsg);
-      if (!settled) {
-        settled = true;
-        clearTimeout(timer);
-        const tail = asterctlLogs
-          .slice(0, 4)
-          .map((l) => l.line)
-          .join(' | ');
-        const fullErr = tail ? `${errMsg}: ${tail}` : errMsg;
-        lastAsterctlError = fullErr;
-        setLastProtocolError(fullErr);
-        recordSerialLog('ERROR', 'ASTERCTL_EXIT', 0, fullErr);
-        reject(new Error(fullErr));
-      }
-    });
-  });
-
-  setLastProtocolError(null);
-  return {
-    pid: child.pid ?? 0,
-    binaryPath: bin.binaryPath,
-    devicePath: resolved.devicePath,
-  };
-}
-
 /**
- * Generates an unmistakable 960x376 RGBA test pattern for explicit hardware verification.
+ * Generates an unmistakable 960x376 RGBA calibration pattern for explicit diagnostics.
  */
 export function createCalibrationTestRgba(): Buffer {
   const buf = Buffer.alloc(DISPLAY_WIDTH * DISPLAY_HEIGHT * 4);
@@ -450,17 +249,20 @@ export function createCalibrationTestRgba(): Buffer {
 }
 
 export async function runOneShotAsterctlCommand(args: string[]): Promise<{stdout: string; stderr: string}> {
-  const bin = detectAsterctlBinary();
+  const bin = detectAsterctlBinary(false);
   if (!bin.available || !bin.binaryPath) {
-    throw new Error(bin.error || 'asterctl binary not found');
+    throw new Error(bin.error || 'Optional asterctl binary not found');
   }
+
+  fs.mkdirSync(ASTERCTL_DIAG_DIR, {recursive: true});
 
   return await new Promise((resolve, reject) => {
     const child = spawn(bin.binaryPath!, args, {
-      cwd: ASTERCTL_ROOT,
+      cwd: ASTERCTL_DIAG_DIR,
       env: {...process.env, RUST_LOG: process.env.RUST_LOG || 'info'},
       stdio: ['ignore', 'pipe', 'pipe'],
     });
+    activeChild = child;
 
     let stdout = '';
     let stderr = '';
@@ -470,6 +272,7 @@ export async function runOneShotAsterctlCommand(args: string[]): Promise<{stdout
       } catch {
         // ignore
       }
+      if (activeChild === child) activeChild = null;
       reject(new Error(`asterctl command timed out after 20s (${args.join(' ')})`));
     }, 20_000);
 
@@ -485,10 +288,12 @@ export async function runOneShotAsterctlCommand(args: string[]): Promise<{stdout
     });
     child.once('error', (err) => {
       clearTimeout(timer);
+      if (activeChild === child) activeChild = null;
       reject(err);
     });
     child.once('exit', (code) => {
       clearTimeout(timer);
+      if (activeChild === child) activeChild = null;
       lastExitCode = code;
       if (code === 0) {
         resolve({stdout: stdout.trim(), stderr: stderr.trim()});
@@ -502,69 +307,92 @@ export async function runOneShotAsterctlCommand(args: string[]): Promise<{stdout
   });
 }
 
-export async function sendImageViaAsterctl(params: {
-  rgbaBuffer: Uint8Array;
+/**
+ * Runs an explicit one-shot `asterctl --on` or `--off` diagnostic power command while holding
+ * the single serial mutex, closing the active Node serial fd first and invalidating the diff
+ * cache afterwards so the next Node push cleanly re-opens, drains RX, and performs a full sync.
+ */
+export async function runAsterctlPowerDiagnostic(params: {
+  action: 'on' | 'off';
   requestedDevicePath?: string;
-}): Promise<{devicePath: string; stdout: string; stderr: string}> {
+  confirmed: boolean;
+}): Promise<{devicePath: string; action: 'on' | 'off'; output: string}> {
+  if (!params.confirmed) {
+    throw new Error('Explicit user confirmation is required before invoking asterctl on the USB device.');
+  }
+
   const gate = canPerformRealSerialWrite();
   if (!gate.allowed) {
-    setLastProtocolError(gate.reason);
-    throw new Error(gate.reason || 'Serial writes blocked');
+    throw new Error(gate.reason || 'Serial writes disabled');
   }
 
-  const resolved = resolveStrictAoostarDevice(params.requestedDevicePath);
-  if (!resolved.devicePath) {
-    const err = resolved.error || 'Aoostar device (0416:90a1) not found';
-    setLastProtocolError(err);
-    throw new Error(err);
+  const bin = detectAsterctlBinary(false);
+  if (!bin.available || !bin.binaryPath) {
+    throw new Error(bin.error || 'Optional asterctl binary is not installed');
   }
 
-  // Stop daemon cleanly so only one process holds /dev/ttyACM0
-  await stopAsterctlProcess();
-  ensureAsterctlDirectories();
+  return await withSerialLock(async () => {
+    const resolved = resolveStrictAoostarDevice(params.requestedDevicePath);
+    if (!resolved.devicePath) {
+      throw new Error(resolved.error || 'Aoostar device (0416:90a1) not found');
+    }
 
-  const imgPath = path.join(ASTERCTL_CFG_DIR, 'oneshot_frame.png');
-  fs.writeFileSync(imgPath, encodePngRgba(params.rgbaBuffer, DISPLAY_WIDTH, DISPLAY_HEIGHT));
-
-  recordSerialLog('INFO', `ASTERCTL_IMAGE_PUSH (${resolved.devicePath})`, imgPath.length);
-  const output = await runOneShotAsterctlCommand(['--device', resolved.devicePath, '--image', imgPath]);
-  setLastProtocolError(null);
-  return {
-    devicePath: resolved.devicePath,
-    ...output,
-  };
+    await closeActiveSerialTransportAsync();
+    try {
+      const flag = params.action === 'off' ? '--off' : '--on';
+      recordSerialLog('INFO', `ASTERCTL_DIAG_${params.action.toUpperCase()} (${resolved.devicePath})`, 0);
+      const res = await runOneShotAsterctlCommand(['--device', resolved.devicePath, flag]);
+      setLastProtocolError(null);
+      return {
+        devicePath: resolved.devicePath,
+        action: params.action,
+        output: [res.stdout, res.stderr].filter(Boolean).join('\n'),
+      };
+    } finally {
+      resetFrameDiffCache();
+    }
+  });
 }
 
+/**
+ * Optional diagnostic check: compares Node RGB565 generation against `asterctl --simulate --save`
+ * (when installed) and optionally runs `--on` / `--off` under the serial mutex.
+ */
 export async function testAsterctlIntegration(params: {
   requestedDevicePath?: string;
   testRealDevice?: boolean;
+  action?: 'simulate' | 'on' | 'off';
   confirmed?: boolean;
 }) {
-  const bin = detectAsterctlBinary();
+  const bin = detectAsterctlBinary(false);
   const perms = inspectSerialPermissions(params.requestedDevicePath);
 
   if (!bin.available || !bin.binaryPath) {
     return {
       ok: false,
+      optionalAbsent: true,
       binaryFound: false,
       binaryPath: bin.binaryPath,
       version: bin.version,
       simulateOk: false,
-      deviceReady: false,
+      deviceReady: perms.exists && perms.readable && perms.writable && perms.isAoostarMatch,
       permissions: perms,
       realHardwareTested: false,
-      message: bin.error || 'asterctl binary is not installed in this runtime',
+      message:
+        'Optional asterctl binary is not installed. Live LCD updates run natively over the Node async serial transport.',
     };
   }
 
-  ensureAsterctlDirectories();
-  const simPngPath = path.join(ASTERCTL_CFG_DIR, 'simulate_test.png');
-  fs.writeFileSync(simPngPath, encodePngRgba(createCalibrationTestRgba(), DISPLAY_WIDTH, DISPLAY_HEIGHT));
+  fs.mkdirSync(ASTERCTL_DIAG_DIR, {recursive: true});
+  const calibrationRgba = createCalibrationTestRgba();
+  const simPngPath = path.join(ASTERCTL_DIAG_DIR, 'simulate_test.png');
+  fs.writeFileSync(simPngPath, encodePngRgba(calibrationRgba, DISPLAY_WIDTH, DISPLAY_HEIGHT));
+  const nodeRgb565Bytes = rgbaToRgb565Le(calibrationRgba, DISPLAY_WIDTH, DISPLAY_HEIGHT).length;
 
   let simulateOk = false;
   let simOutput = '';
   try {
-    const res = await runOneShotAsterctlCommand(['--simulate', '--image', simPngPath]);
+    const res = await runOneShotAsterctlCommand(['--simulate', '--save', '--image', simPngPath]);
     simulateOk = true;
     simOutput = [res.stdout, res.stderr].filter(Boolean).join('\n');
   } catch (err) {
@@ -583,40 +411,36 @@ export async function testAsterctlIntegration(params: {
 
   let realHardwareTested = false;
   let realOutput = '';
-  if (params.testRealDevice) {
-    if (!params.confirmed) {
-      throw new Error('Explicit user confirmation is required before testing the real USB device.');
-    }
-    const gate = canPerformRealSerialWrite();
-    if (!gate.allowed) {
-      throw new Error(gate.reason || 'Serial writes disabled');
-    }
-    const resolved = resolveStrictAoostarDevice(params.requestedDevicePath);
-    if (!resolved.devicePath) {
-      throw new Error(resolved.error || 'Aoostar device (0416:90a1) not found');
-    }
-    await stopAsterctlProcess();
-    const res = await runOneShotAsterctlCommand(['--device', resolved.devicePath, '--on']);
+  const powerAction =
+    params.action === 'off' ? 'off' : params.testRealDevice || params.action === 'on' ? 'on' : null;
+
+  if (powerAction) {
+    const res = await runAsterctlPowerDiagnostic({
+      action: powerAction,
+      requestedDevicePath: params.requestedDevicePath,
+      confirmed: Boolean(params.confirmed),
+    });
     realHardwareTested = true;
-    realOutput = [res.stdout, res.stderr].filter(Boolean).join('\n');
+    realOutput = res.output;
   }
 
   const deviceReady = perms.exists && perms.readable && perms.writable && perms.isAoostarMatch;
   return {
-    ok: simulateOk && (!params.testRealDevice || realHardwareTested),
+    ok: simulateOk && (!powerAction || realHardwareTested),
     binaryFound: true,
     binaryPath: bin.binaryPath,
     version: bin.version,
     simulateOk,
     simulateOutput: simOutput,
+    nodeReferenceBytes: nodeRgb565Bytes,
     deviceReady,
     permissions: perms,
     realHardwareTested,
     realOutput,
     message: realHardwareTested
-      ? `asterctl ${bin.version} verified binary + simulated + opened ${perms.devicePath} cleanly.`
+      ? `asterctl ${bin.version} --simulate --save + --${powerAction} verified cleanly on ${perms.devicePath}.`
       : deviceReady
-        ? `asterctl ${bin.version} binary & simulate passed; ${perms.devicePath} (${perms.usbVidPid}) is R/W ready.`
-        : `asterctl ${bin.version} binary & simulate passed; hardware device issue: ${perms.error || 'not connected'}.`,
+        ? `asterctl ${bin.version} --simulate --save passed (${nodeRgb565Bytes}B RGB565); ${perms.devicePath} (${perms.usbVidPid}) is R/W ready.`
+        : `asterctl ${bin.version} --simulate --save passed; hardware device issue: ${perms.error || 'not connected'}.`,
   };
 }

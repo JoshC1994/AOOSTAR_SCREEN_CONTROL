@@ -1,13 +1,32 @@
 import {useEffect, useRef, useState} from 'react';
-import {AlertTriangle, Clock, Container, Moon, RefreshCw, Sun, Trash2, Upload, Usb} from 'lucide-react';
+import {
+  AlertTriangle,
+  Clock,
+  Container,
+  Lock,
+  Moon,
+  Power,
+  RefreshCw,
+  Sun,
+  Trash2,
+  Unlock,
+  Upload,
+  Usb,
+} from 'lucide-react';
 import {PRESET_BACKGROUNDS} from '../presets.ts';
-import type {DetectedUsbDevice, LastFrameMeta, StudioConfig, TelemetrySnapshot} from '../types.ts';
+import type {AuthStatusResponse, DetectedUsbDevice, LastFrameMeta, StudioConfig, TelemetrySnapshot} from '../types.ts';
+import {apiFetch} from '../utils/apiClient.ts';
+import {SecuritySettingsPanel} from './SecuritySettingsPanel.tsx';
 
 interface SettingsViewProps {
   config: StudioConfig;
   telemetry: TelemetrySnapshot | null;
   lastFrame: LastFrameMeta | null;
   onUpdateConfig: (updater: (prev: StudioConfig) => StudioConfig) => void;
+  authStatus: AuthStatusResponse | null;
+  onAuthStatusChanged: () => Promise<void> | void;
+  onSignedOut: () => void;
+  focusSecurityCounter?: number;
 }
 
 const POLL_OPTIONS = [
@@ -26,20 +45,49 @@ const BRIGHTNESS_PRESETS = [
 
 const QUICK_SCREEN_SECONDS = [10, 15, 30, 60];
 
-export function SettingsView({config, telemetry, lastFrame, onUpdateConfig}: SettingsViewProps) {
+export function SettingsView({
+  config,
+  telemetry,
+  lastFrame,
+  onUpdateConfig,
+  authStatus,
+  onAuthStatusChanged,
+  onSignedOut,
+  focusSecurityCounter = 0,
+}: SettingsViewProps) {
   const [devices, setDevices] = useState<DetectedUsbDevice[]>([]);
   const [frameMeta, setFrameMeta] = useState<LastFrameMeta | null>(lastFrame);
+  const [serialWritesActive, setSerialWritesActive] = useState(false);
+  const [serialWritesEnvLocked, setSerialWritesEnvLocked] = useState(false);
+  const [hardwareActionMsg, setHardwareActionMsg] = useState<{ok: boolean; text: string} | null>(null);
+  const [busyHwAction, setBusyHwAction] = useState(false);
+  const [confirmUnlockWrites, setConfirmUnlockWrites] = useState(false);
   const [uploadingForDocker, setUploadingForDocker] = useState<string | null>(null);
   const [newContainerName, setNewContainerName] = useState('');
+  const [highlightSecurity, setHighlightSecurity] = useState(false);
   const dockerFileInputRef = useRef<HTMLInputElement | null>(null);
   const activeUploadTargetRef = useRef<string | null>(null);
+  const securitySectionRef = useRef<HTMLDivElement | null>(null);
 
   const scanHardware = async () => {
     try {
-      const res = await fetch('/api/hardware/devices');
-      const data = (await res.json()) as {devices: DetectedUsbDevice[]; lastFrame: LastFrameMeta};
-      setDevices(data.devices);
-      setFrameMeta(data.lastFrame);
+      const [devRes, diagRes] = await Promise.all([
+        apiFetch('/api/hardware/devices'),
+        apiFetch('/api/diagnostics'),
+      ]);
+      if (devRes.ok) {
+        const data = (await devRes.json()) as {devices: DetectedUsbDevice[]; lastFrame: LastFrameMeta};
+        setDevices(data.devices);
+        setFrameMeta(data.lastFrame);
+      }
+      if (diagRes.ok) {
+        const d = (await diagRes.json()) as {
+          serialWritesEnabled?: boolean;
+          serialWritesEnvLocked?: boolean;
+        };
+        setSerialWritesActive(Boolean(d.serialWritesEnabled));
+        setSerialWritesEnvLocked(Boolean(d.serialWritesEnvLocked));
+      }
     } catch {
       // ignore
     }
@@ -53,6 +101,64 @@ export function SettingsView({config, telemetry, lastFrame, onUpdateConfig}: Set
     if (lastFrame) setFrameMeta(lastFrame);
   }, [lastFrame]);
 
+  useEffect(() => {
+    if (focusSecurityCounter <= 0) return;
+    setHighlightSecurity(true);
+    securitySectionRef.current?.scrollIntoView({behavior: 'smooth', block: 'start'});
+    const timer = window.setTimeout(() => setHighlightSecurity(false), 3000);
+    return () => window.clearTimeout(timer);
+  }, [focusSecurityCounter]);
+
+  const handleDisplayCommand = async (endpoint: '/api/display/on' | '/api/display/off' | '/api/hardware/force-refresh', label: string) => {
+    setBusyHwAction(true);
+    setHardwareActionMsg(null);
+    try {
+      const res = await apiFetch(endpoint, {method: 'POST'});
+      const data = (await res.json().catch(() => ({}))) as {error?: string; message?: string};
+      setHardwareActionMsg({
+        ok: res.ok,
+        text: res.ok ? data.message || `${label} succeeded.` : data.error || `${label} failed (HTTP ${res.status})`,
+      });
+      await scanHardware();
+    } catch {
+      setHardwareActionMsg({ok: false, text: `${label} request failed.`});
+    } finally {
+      setBusyHwAction(false);
+    }
+  };
+
+  const handleToggleSerialWrites = async (enable: boolean) => {
+    setBusyHwAction(true);
+    setConfirmUnlockWrites(false);
+    setHardwareActionMsg(null);
+    try {
+      const res = await apiFetch('/api/hardware/serial-writes', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({enabled: enable, confirmed: true}),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        serialWritesEnabled?: boolean;
+      };
+      if (res.ok) {
+        setSerialWritesActive(Boolean(data.serialWritesEnabled));
+        onUpdateConfig((prev) => ({
+          ...prev,
+          hardware: {...prev.hardware, serialWritesEnabled: enable},
+        }));
+        setHardwareActionMsg({
+          ok: true,
+          text: enable ? 'Serial hardware writes unlocked.' : 'Serial hardware writes locked safely.',
+        });
+      } else {
+        setHardwareActionMsg({ok: false, text: data.error || `Failed (HTTP ${res.status})`});
+      }
+    } finally {
+      setBusyHwAction(false);
+    }
+  };
+
   const handleUploadDockerIcon = async (file: File, containerName: string) => {
     setUploadingForDocker(containerName);
     try {
@@ -62,7 +168,7 @@ export function SettingsView({config, telemetry, lastFrame, onUpdateConfig}: Set
         reader.onerror = () => reject(new Error('Failed to read file'));
         reader.readAsDataURL(file);
       });
-      const res = await fetch('/api/uploads', {
+      const res = await apiFetch('/api/uploads', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({name: `${containerName}-icon`, dataUrl}),
@@ -109,11 +215,21 @@ export function SettingsView({config, telemetry, lastFrame, onUpdateConfig}: Set
     <div className="max-w-[1280px] mx-auto p-6 space-y-6">
       <div className="rounded-lg border border-slate-200 dark:border-[#1F2937] bg-white dark:bg-[#0F131C] p-5 shadow-xs dark:shadow-none">
         <h1 className="text-lg font-display font-semibold text-slate-900 dark:text-slate-100">
-          Display &amp; Hardware Settings
+          Display, Security &amp; Hardware Settings
         </h1>
         <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
-          Configure screen cycle times, live refresh cadence, panel brightness, sleep hours, and Docker container icons.
+          Manage Studio login credentials, script API tokens, screen cycle times, brightness, sleep hours, and USB display target.
         </p>
+      </div>
+
+      {/* Security & Access */}
+      <div ref={securitySectionRef}>
+        <SecuritySettingsPanel
+          authStatus={authStatus}
+          onAuthStatusChanged={onAuthStatusChanged}
+          onSignedOut={onSignedOut}
+          highlightSection={highlightSecurity}
+        />
       </div>
 
       {/* Section 1: Display Times & Refresh */}
@@ -365,7 +481,9 @@ export function SettingsView({config, telemetry, lastFrame, onUpdateConfig}: Set
                 className="w-full px-3 py-2 rounded bg-slate-50 dark:bg-[#0B0E14] border border-slate-300 dark:border-[#263042] text-xs text-slate-900 dark:text-slate-100"
               >
                 <option value={0}>0° Standard Landscape (960×376)</option>
-                <option value={180}>180° Flipped Landscape</option>
+                <option value={90}>90° Portrait (376×960)</option>
+                <option value={180}>180° Flipped Landscape (960×376)</option>
+                <option value={270}>270° Flipped Portrait (376×960)</option>
               </select>
             </div>
 
@@ -435,6 +553,37 @@ export function SettingsView({config, telemetry, lastFrame, onUpdateConfig}: Set
                 </div>
               </div>
             </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <label className="flex items-center justify-between px-3 py-2 rounded border border-slate-200 dark:border-[#1F2937] bg-slate-50 dark:bg-[#0B0E14] cursor-pointer text-xs">
+                <span className="text-slate-800 dark:text-slate-200">Power off LCD at boot</span>
+                <input
+                  type="checkbox"
+                  checked={Boolean(config.hardware.bootDisplayOff)}
+                  onChange={(e) =>
+                    onUpdateConfig((prev) => ({
+                      ...prev,
+                      hardware: {...prev.hardware, bootDisplayOff: e.target.checked},
+                    }))
+                  }
+                  className="accent-amber-500"
+                />
+              </label>
+              <label className="flex items-center justify-between px-3 py-2 rounded border border-slate-200 dark:border-[#1F2937] bg-slate-50 dark:bg-[#0B0E14] cursor-pointer text-xs">
+                <span className="text-slate-800 dark:text-slate-200">Off on emergency stop</span>
+                <input
+                  type="checkbox"
+                  checked={Boolean(config.hardware.powerOffOnEmergencyStop)}
+                  onChange={(e) =>
+                    onUpdateConfig((prev) => ({
+                      ...prev,
+                      hardware: {...prev.hardware, powerOffOnEmergencyStop: e.target.checked},
+                    }))
+                  }
+                  className="accent-amber-500"
+                />
+              </label>
+            </div>
           </div>
         </div>
       </section>
@@ -483,7 +632,7 @@ export function SettingsView({config, telemetry, lastFrame, onUpdateConfig}: Set
         <input
           ref={dockerFileInputRef}
           type="file"
-          accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml"
+          accept="image/png,image/jpeg,image/webp,image/gif,image/avif"
           className="hidden"
           onChange={(e) => {
             const file = e.target.files?.[0];
@@ -716,6 +865,95 @@ export function SettingsView({config, telemetry, lastFrame, onUpdateConfig}: Set
             </div>
           </div>
         </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-200 dark:border-[#1F2937]">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => void handleDisplayCommand('/api/display/on', 'Display On')}
+              disabled={busyHwAction}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded border border-emerald-400 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/30 text-xs font-medium text-emerald-800 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 disabled:opacity-50"
+            >
+              <Power className="w-3.5 h-3.5" />
+              Display On
+            </button>
+            <button
+              onClick={() => void handleDisplayCommand('/api/display/off', 'Display Off')}
+              disabled={busyHwAction}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded border border-slate-300 dark:border-[#263042] bg-slate-100 dark:bg-[#141A26] text-xs font-medium text-slate-800 dark:text-slate-200 hover:border-amber-500/60 disabled:opacity-50"
+            >
+              Display Off
+            </button>
+            <button
+              onClick={() => void handleDisplayCommand('/api/hardware/force-refresh', 'Force Full Refresh')}
+              disabled={busyHwAction}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded border border-slate-300 dark:border-[#263042] bg-slate-100 dark:bg-[#141A26] text-xs font-medium text-slate-800 dark:text-slate-200 hover:border-amber-500/60 disabled:opacity-50"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              Force Full Refresh
+            </button>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {serialWritesEnvLocked ? (
+              <span className="inline-flex items-center gap-1.5 text-xs font-mono text-amber-700 dark:text-amber-300">
+                <Lock className="w-3.5 h-3.5" />
+                Locked off by AOOSTAR_LOCK_SERIAL_WRITES=true
+              </span>
+            ) : serialWritesActive ? (
+              <button
+                onClick={() => void handleToggleSerialWrites(false)}
+                disabled={busyHwAction}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded border border-rose-300 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/30 text-xs font-medium text-rose-700 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-900/40"
+              >
+                <Lock className="w-3.5 h-3.5" />
+                Lock Serial Writes
+              </button>
+            ) : (
+              <button
+                onClick={() => setConfirmUnlockWrites(true)}
+                disabled={busyHwAction}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded border border-amber-400 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/30 text-xs font-medium text-amber-800 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/40"
+              >
+                <Unlock className="w-3.5 h-3.5" />
+                Unlock Serial Writes
+              </button>
+            )}
+          </div>
+        </div>
+
+        {confirmUnlockWrites && (
+          <div className="p-3 rounded border border-amber-300 dark:border-amber-700/60 bg-amber-50 dark:bg-amber-950/30 text-xs flex flex-wrap items-center justify-between gap-3">
+            <span className="text-amber-900 dark:text-amber-200">
+              Confirm enabling physical serial writes to <code className="font-mono">{config.hardware.devicePath}</code>?
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setConfirmUnlockWrites(false)}
+                className="px-2.5 py-1 rounded border border-slate-300 dark:border-[#263042] bg-white dark:bg-[#141A26] text-xs"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => void handleToggleSerialWrites(true)}
+                className="px-3 py-1 rounded bg-amber-500 text-slate-950 font-semibold text-xs hover:bg-amber-400"
+              >
+                Confirm Unlock
+              </button>
+            </div>
+          </div>
+        )}
+
+        {hardwareActionMsg && (
+          <div
+            className={`p-2.5 rounded border text-xs font-mono ${
+              hardwareActionMsg.ok
+                ? 'border-emerald-300 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/25 text-emerald-800 dark:text-emerald-300'
+                : 'border-rose-300 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/30 text-rose-800 dark:text-rose-300'
+            }`}
+          >
+            {hardwareActionMsg.text}
+          </div>
+        )}
 
         {frameMeta?.lastError && (
           <div className="p-3 rounded border border-amber-300 dark:border-amber-700/60 bg-amber-50 dark:bg-amber-950/30 text-xs text-amber-800 dark:text-amber-300 flex items-start gap-2">

@@ -5,12 +5,14 @@ import {
   Cpu,
   OctagonX,
   Play,
+  Power,
   RefreshCw,
   ShieldAlert,
   Terminal,
   Usb,
 } from 'lucide-react';
 import type {DiagnosticsSnapshot} from '../types.ts';
+import {apiFetch} from '../utils/apiClient.ts';
 
 interface DiagnosticsViewProps {
   onRefreshParent?: () => void;
@@ -26,7 +28,7 @@ export function DiagnosticsView({onRefreshParent}: DiagnosticsViewProps) {
 
   const fetchDiagnostics = useCallback(async () => {
     try {
-      const res = await fetch('/api/diagnostics');
+      const res = await apiFetch('/api/diagnostics');
       if (res.ok) {
         const data = (await res.json()) as DiagnosticsSnapshot;
         setDiag(data);
@@ -50,7 +52,7 @@ export function DiagnosticsView({onRefreshParent}: DiagnosticsViewProps) {
     setBusyAction('dry-run');
     setActionMessage(null);
     try {
-      const res = await fetch('/api/hardware/dry-run', {
+      const res = await apiFetch('/api/hardware/dry-run', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({}),
@@ -80,7 +82,7 @@ export function DiagnosticsView({onRefreshParent}: DiagnosticsViewProps) {
     setBusyAction('test-asterctl');
     setActionMessage(null);
     try {
-      const res = await fetch('/api/hardware/test-asterctl', {
+      const res = await apiFetch('/api/hardware/test-asterctl', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({testRealDevice: false}),
@@ -109,7 +111,7 @@ export function DiagnosticsView({onRefreshParent}: DiagnosticsViewProps) {
     setBusyAction(mode);
     setActionMessage(null);
     try {
-      const res = await fetch('/api/hardware/safe-test', {
+      const res = await apiFetch('/api/hardware/safe-test', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({confirmed: true, mode}),
@@ -142,11 +144,37 @@ export function DiagnosticsView({onRefreshParent}: DiagnosticsViewProps) {
     }
   };
 
+  const handleDisplayPowerOrRefresh = async (
+    endpoint: '/api/display/on' | '/api/display/off' | '/api/hardware/force-refresh',
+    key: string,
+    label: string
+  ) => {
+    setBusyAction(key);
+    setActionMessage(null);
+    try {
+      const res = await apiFetch(endpoint, {method: 'POST'});
+      const data = await res.json().catch(() => ({}));
+      if (data.diagnostics) setDiag(data.diagnostics);
+      onRefreshParent?.();
+      setActionMessage({
+        ok: res.ok,
+        text: res.ok ? data.message || `${label} complete.` : data.error || `${label} failed (HTTP ${res.status})`,
+      });
+    } catch (err) {
+      setActionMessage({
+        ok: false,
+        text: err instanceof Error ? err.message : `${label} failed`,
+      });
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
   const handleEmergencyStop = async () => {
     setBusyAction('stop');
     setActionMessage(null);
     try {
-      const res = await fetch('/api/hardware/stop-serial', {method: 'POST'});
+      const res = await apiFetch('/api/hardware/stop-serial', {method: 'POST'});
       const data = await res.json();
       if (data.diagnostics) setDiag(data.diagnostics);
       onRefreshParent?.();
@@ -167,12 +195,12 @@ export function DiagnosticsView({onRefreshParent}: DiagnosticsViewProps) {
   const handleClearEmergencyStop = async () => {
     setBusyAction('clear-stop');
     try {
-      const res = await fetch('/api/hardware/clear-emergency-stop', {method: 'POST'});
+      const res = await apiFetch('/api/hardware/clear-emergency-stop', {method: 'POST'});
       const data = await res.json();
       if (data.diagnostics) setDiag(data.diagnostics);
       setActionMessage({
         ok: true,
-        text: 'Emergency stop latch cleared. Real writes remain gated by AOOSTAR_ENABLE_SERIAL_WRITES.',
+        text: 'Emergency stop latch cleared. Real writes remain gated by AOOSTAR_ENABLE_SERIAL_WRITES or Settings.',
       });
     } finally {
       setBusyAction(null);
@@ -257,7 +285,7 @@ export function DiagnosticsView({onRefreshParent}: DiagnosticsViewProps) {
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded border border-slate-300 dark:border-[#263042] bg-slate-100 dark:bg-[#141A26] text-xs font-semibold text-slate-800 dark:text-slate-200 hover:border-amber-500/60 disabled:opacity-50"
             >
               <Terminal className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
-              Test asterctl
+              Compare (--simulate --save)
             </button>
             <button
               onClick={() => setConfirmMode('display-on')}
@@ -273,6 +301,30 @@ export function DiagnosticsView({onRefreshParent}: DiagnosticsViewProps) {
             >
               <Cpu className="w-3.5 h-3.5" />
               Send test frame
+            </button>
+            <button
+              onClick={() => void handleDisplayPowerOrRefresh('/api/display/on', 'display-power-on', 'Display On')}
+              disabled={busyAction !== null}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded border border-emerald-400 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/30 text-xs font-medium text-emerald-800 dark:text-emerald-300 disabled:opacity-50"
+            >
+              <Power className="w-3.5 h-3.5" />
+              On
+            </button>
+            <button
+              onClick={() => void handleDisplayPowerOrRefresh('/api/display/off', 'display-power-off', 'Display Off')}
+              disabled={busyAction !== null}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded border border-slate-300 dark:border-[#263042] bg-slate-100 dark:bg-[#141A26] text-xs font-medium text-slate-800 dark:text-slate-200 disabled:opacity-50"
+            >
+              Off
+            </button>
+            <button
+              onClick={() =>
+                void handleDisplayPowerOrRefresh('/api/hardware/force-refresh', 'force-refresh', 'Force Full Refresh')
+              }
+              disabled={busyAction !== null}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded border border-slate-300 dark:border-[#263042] bg-slate-100 dark:bg-[#141A26] text-xs font-medium text-slate-800 dark:text-slate-200 disabled:opacity-50"
+            >
+              Full Sync
             </button>
           </div>
         </div>
@@ -336,13 +388,13 @@ export function DiagnosticsView({onRefreshParent}: DiagnosticsViewProps) {
 
           <div className="p-3.5 rounded border border-slate-200 dark:border-[#1F2937] bg-slate-50 dark:bg-[#0B0E14] space-y-1">
             <div className="text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400">
-              asterctl Binary &amp; Version
+              Optional asterctl CLI
             </div>
             <div className="text-sm font-mono font-semibold text-slate-900 dark:text-slate-100 truncate">
-              {aster?.available ? aster.version : 'Not installed'}
+              {aster?.available ? aster.version : 'Not installed (optional)'}
             </div>
             <div className="text-[11px] font-mono text-slate-600 dark:text-slate-400 truncate" title={aster?.binaryPath || aster?.lastError || ''}>
-              {aster?.binaryPath ?? aster?.lastError ?? 'Use updated Dockerfile to bundle asterctl'}
+              {aster?.binaryPath ?? 'Live updates run natively via Node serial'}
             </div>
           </div>
 
@@ -365,9 +417,17 @@ export function DiagnosticsView({onRefreshParent}: DiagnosticsViewProps) {
                   ? `ENABLED (${diag.activeTransport})`
                   : 'DISABLED (Safe Default)'}
             </div>
-            <div className="text-[11px] font-mono text-slate-600 dark:text-slate-400">
-              Env: <span className="font-semibold">{String(diag?.serialWritesEnabled ?? false)}</span> · Auto-push:{' '}
-              <span>{diag?.sessionPushArmed ? 'Armed' : 'Disarmed'}</span>
+            <div className="text-[11px] font-mono text-slate-600 dark:text-slate-400 space-y-0.5">
+              <div>
+                Env: <span className="font-semibold">{String(diag?.serialWritesEnvEnabled ?? false)}</span> · Config:{' '}
+                <span className="font-semibold">{String(diag?.serialWritesConfigEnabled ?? false)}</span>
+                {diag?.serialWritesEnvLocked ? ' (Env Locked)' : ''}
+              </div>
+              <div>
+                Daemon: <span className="font-semibold">{diag?.daemonState ?? 'idle'}</span> · Diff:{' '}
+                <span>{diag?.lastFrame?.diffMode ? 'diff-cache' : 'full'}</span> · Skipped:{' '}
+                <span>{String(diag?.lastFrame?.unchangedSkipped ?? false)}</span>
+              </div>
             </div>
           </div>
         </div>

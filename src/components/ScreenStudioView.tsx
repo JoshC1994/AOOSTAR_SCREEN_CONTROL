@@ -9,6 +9,7 @@ import {
   Clock,
   Code2,
   Copy,
+  Eye,
   Grid,
   Image as ImageIcon,
   Pause,
@@ -43,6 +44,7 @@ import type {
   TelemetrySnapshot,
   WidgetType,
 } from '../types.ts';
+import {apiFetch} from '../utils/apiClient.ts';
 import {isScreenUnsaved, upsertSavedScreen} from '../utils/screenSave.ts';
 import {LcdWidgetRenderer} from './LcdWidgetRenderer.tsx';
 
@@ -114,6 +116,8 @@ export function ScreenStudioView({
   const [savedNotice, setSavedNotice] = useState(false);
   const [pendingDeleteScreen, setPendingDeleteScreen] = useState<LcdScreen | null>(null);
   const [pendingDeleteName, setPendingDeleteName] = useState('');
+  const [serverPreviewUrl, setServerPreviewUrl] = useState<string | null>(null);
+  const [loadingServerPreview, setLoadingServerPreview] = useState(false);
 
   const stageContainerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLDivElement | null>(null);
@@ -367,7 +371,7 @@ export function ScreenStudioView({
     setUploadingImage(true);
     setUploadError(null);
     try {
-      const initRes = await fetch('/api/uploads/init', {
+      const initRes = await apiFetch('/api/uploads/init', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({name: file.name, mimeType: file.type}),
@@ -382,7 +386,7 @@ export function ScreenStudioView({
       const CHUNK_SIZE = 2 * 1024 * 1024;
       for (let offset = 0; offset < file.size; offset += CHUNK_SIZE) {
         const chunk = file.slice(offset, offset + CHUNK_SIZE);
-        const chunkRes = await fetch(`/api/uploads/chunk/${encodeURIComponent(uploadId)}`, {
+        const chunkRes = await apiFetch(`/api/uploads/chunk/${encodeURIComponent(uploadId)}`, {
           method: 'POST',
           headers: {'Content-Type': 'application/octet-stream'},
           body: chunk,
@@ -394,7 +398,7 @@ export function ScreenStudioView({
         }
       }
 
-      const finishRes = await fetch(`/api/uploads/finish/${encodeURIComponent(uploadId)}`, {
+      const finishRes = await apiFetch(`/api/uploads/finish/${encodeURIComponent(uploadId)}`, {
         method: 'POST',
       });
       if (!finishRes.ok) {
@@ -492,7 +496,26 @@ export function ScreenStudioView({
         })),
       })),
     }));
-    void fetch(`/api/uploads/${encodeURIComponent(id)}`, {method: 'DELETE'});
+    void apiFetch(`/api/uploads/${encodeURIComponent(id)}`, {method: 'DELETE'});
+  };
+
+  const handleOpenServerPreview = async () => {
+    if (!activeScreen) return;
+    setLoadingServerPreview(true);
+    try {
+      const url = `/api/hardware/preview.png?screenId=${encodeURIComponent(activeScreen.id)}&t=${Date.now()}`;
+      const res = await apiFetch(url);
+      if (res.ok) {
+        const blob = await res.blob();
+        const objectUrl = URL.createObjectURL(blob);
+        setServerPreviewUrl((prev) => {
+          if (prev) URL.revokeObjectURL(prev);
+          return objectUrl;
+        });
+      }
+    } finally {
+      setLoadingServerPreview(false);
+    }
   };
 
   const applyThemeToActiveScreen = (theme: LcdTheme) => {
@@ -768,7 +791,7 @@ export function ScreenStudioView({
               <input
                 ref={bgFileInputRef}
                 type="file"
-                accept="image/*,.gif,video/mp4,video/webm"
+                accept="image/png,image/jpeg,image/webp,image/gif,image/avif,video/mp4,video/webm"
                 className="hidden"
                 onChange={(e) => {
                   const file = e.target.files?.[0];
@@ -790,7 +813,7 @@ export function ScreenStudioView({
 
                 {config.customImages.length === 0 && (
                   <div className="rounded border border-dashed border-slate-300 dark:border-[#263042] bg-slate-50 dark:bg-[#0B0E14] px-3 py-4 text-center text-[11px] text-slate-500">
-                    Import PNG, JPG, GIF, SVG, or MP4/WebM files to use in Image blocks and backgrounds.
+                    Import PNG, JPG, WebP, GIF, AVIF, or MP4/WebM files to use in Image blocks and backgrounds.
                   </div>
                 )}
 
@@ -961,17 +984,27 @@ export function ScreenStudioView({
             <span className="text-xs text-slate-600 dark:text-slate-400">
               Live values update every 2.5s. Click any block to assign an entity, image, or ApexCharts code.
             </span>
-            <button
-              onClick={() => setShowGrid((g) => !g)}
-              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs border transition-colors ${
-                showGrid
-                  ? 'bg-white dark:bg-[#1A2233] border-slate-400 dark:border-slate-600 text-slate-900 dark:text-slate-100'
-                  : 'bg-white/80 dark:bg-[#111622] border-slate-300 dark:border-[#1F2937] text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-              }`}
-            >
-              <Grid className="w-3.5 h-3.5" />
-              Snap Grid
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => void handleOpenServerPreview()}
+                disabled={loadingServerPreview}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs border bg-white/80 dark:bg-[#111622] border-slate-300 dark:border-[#1F2937] text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-100 whitespace-nowrap"
+              >
+                <Eye className="w-3.5 h-3.5 text-amber-500" />
+                {loadingServerPreview ? 'Rendering...' : 'Server Preview'}
+              </button>
+              <button
+                onClick={() => setShowGrid((g) => !g)}
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs border transition-colors whitespace-nowrap ${
+                  showGrid
+                    ? 'bg-white dark:bg-[#1A2233] border-slate-400 dark:border-slate-600 text-slate-900 dark:text-slate-100'
+                    : 'bg-white/80 dark:bg-[#111622] border-slate-300 dark:border-[#1F2937] text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                }`}
+              >
+                <Grid className="w-3.5 h-3.5" />
+                Snap Grid
+              </button>
+            </div>
           </div>
 
           <div
@@ -1359,7 +1392,7 @@ export function ScreenStudioView({
                   <input
                     ref={widgetFileInputRef}
                     type="file"
-                    accept="image/*,.gif,video/mp4,video/webm"
+                    accept="image/png,image/jpeg,image/webp,image/gif,image/avif,video/mp4,video/webm"
                     className="hidden"
                     onChange={(e) => {
                       const file = e.target.files?.[0];
@@ -1493,7 +1526,7 @@ export function ScreenStudioView({
                   <input
                     ref={dockerIconFileInputRef}
                     type="file"
-                    accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml"
+                    accept="image/png,image/jpeg,image/webp,image/gif,image/avif"
                     className="hidden"
                     onChange={(e) => {
                       const file = e.target.files?.[0];
@@ -1775,7 +1808,7 @@ export function ScreenStudioView({
                         <input
                           ref={blockBgFileInputRef}
                           type="file"
-                          accept="image/*,.gif"
+                          accept="image/png,image/jpeg,image/webp,image/gif,image/avif"
                           className="hidden"
                           onChange={(e) => {
                             const file = e.target.files?.[0];
@@ -2370,6 +2403,47 @@ export function ScreenStudioView({
               >
                 Save &amp; Remove
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {serverPreviewUrl && (
+        <div
+          onClick={() => {
+            URL.revokeObjectURL(serverPreviewUrl);
+            setServerPreviewUrl(null);
+          }}
+          className="fixed inset-0 z-50 bg-slate-950/80 flex items-center justify-center p-4"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-[1040px] rounded-xl border border-slate-200 dark:border-[#263042] bg-white dark:bg-[#0F131C] p-5 space-y-4 shadow-2xl"
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-[#1F2937]">
+              <div>
+                <h2 className="text-sm font-display font-semibold text-slate-900 dark:text-slate-100">
+                  Server-Rendered LCD Frame Preview (960×376 PNG)
+                </h2>
+                <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
+                  Rendered server-side using the headless compositor pushed to hardware.
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  URL.revokeObjectURL(serverPreviewUrl);
+                  setServerPreviewUrl(null);
+                }}
+                className="p-1.5 rounded text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="bg-black rounded border border-slate-800 overflow-hidden flex items-center justify-center">
+              <img
+                src={serverPreviewUrl}
+                alt="Server rendered LCD preview"
+                className="max-w-full h-auto block"
+              />
             </div>
           </div>
         </div>

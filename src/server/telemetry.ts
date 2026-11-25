@@ -1,8 +1,9 @@
 import fs from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
-import {execFile, execSync, spawn} from 'node:child_process';
+import {execFile, spawn} from 'node:child_process';
 import {promisify} from 'node:util';
+import {safeOutboundFetch} from './security.ts';
 import type {
   ActiveSessionInfo,
   CustomConnection,
@@ -18,6 +19,7 @@ import type {
   NetworkInterfaceInfo,
   ServerTaskInfo,
   ShareInfo,
+  StudioConfig,
   TelemetrySnapshot,
   TempSensorInfo,
   UpsInfo,
@@ -97,23 +99,7 @@ function recordEntityHistory(id: string, val: number | null) {
   entityHistoryMap.set(id, arr);
 }
 
-function ensureHistorySeeded(cpu: number, ram: number, rx: number, tx: number) {
-  if (historyBuffer.timestamps.length > 0) return;
-  const now = Date.now();
-  for (let i = 15; i >= 0; i--) {
-    const t = new Date(now - i * 3000);
-    historyBuffer.timestamps.push(
-      t.toLocaleTimeString('en-US', {hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit'})
-    );
-    historyBuffer.cpuSeries.push(Math.max(4, Math.min(96, Math.round(cpu + Math.sin(i * 0.6) * 5))));
-    historyBuffer.ramSeries.push(Math.max(10, Math.min(95, Math.round(ram + Math.cos(i * 0.4) * 2))));
-    historyBuffer.netRxSeries.push(Math.max(0.5, Number((rx + Math.sin(i * 0.7) * 14).toFixed(1))));
-    historyBuffer.netTxSeries.push(Math.max(0.2, Number((tx + Math.cos(i * 0.5) * 6).toFixed(1))));
-  }
-}
-
 function pushHistoryPoint(cpu: number, ram: number, rx: number, tx: number) {
-  ensureHistorySeeded(cpu, ram, rx, tx);
   const label = new Date().toLocaleTimeString('en-US', {
     hour12: false,
     hour: '2-digit',
@@ -137,14 +123,7 @@ function pushHistoryPoint(cpu: number, ram: number, rx: number, tx: number) {
 const taskOverrides: Record<
   string,
   {status: 'running' | 'scheduled' | 'idle'; progressPercent: number; speedText: string; etaText: string}
-> = {
-  'task-backup': {
-    status: 'running',
-    progressPercent: 64,
-    speedText: '312 MB/s',
-    etaText: '4m 18s',
-  },
-};
+> = {};
 
 export function triggerTaskState(taskId: string, action: 'start' | 'stop') {
   if (action === 'start') {
@@ -1179,17 +1158,24 @@ async function readLocalDockerSocket(): Promise<DockerContainerInfo[]> {
   });
 }
 
-function readLocalDisks(): {disks: DiskInfo[]; totalBytes: number; usedBytes: number; freeBytes: number} {
+async function readLocalDisks(): Promise<{disks: DiskInfo[]; totalBytes: number; usedBytes: number; freeBytes: number}> {
   const disks: DiskInfo[] = [];
   let totalBytes = 0;
   let usedBytes = 0;
   let freeBytes = 0;
 
   try {
-    const output = execSync('df -kP -x tmpfs -x devtmpfs -x overlay 2>/dev/null || df -kP', {
-      encoding: 'utf8',
-      timeout: 1000,
-    });
+    let output = '';
+    try {
+      const res = await execFileAsync('df', ['-kP', '-x', 'tmpfs', '-x', 'devtmpfs', '-x', 'overlay'], {
+        encoding: 'utf8',
+        timeout: 1500,
+      });
+      output = res.stdout;
+    } catch {
+      const res = await execFileAsync('df', ['-kP'], {encoding: 'utf8', timeout: 1500});
+      output = res.stdout;
+    }
     const lines = output.trim().split('\n').slice(1);
     const seen = new Set<string>();
     for (const line of lines) {
@@ -1314,10 +1300,10 @@ function readUnraidDisksIni(): DiskInfo[] {
   return disks;
 }
 
-function readSmbSessions(): ActiveSessionInfo[] {
+async function readSmbSessions(): Promise<ActiveSessionInfo[]> {
   try {
-    const out = execSync('smbstatus -b --json 2>/dev/null', {encoding: 'utf8', timeout: 800});
-    const parsed = JSON.parse(out) as {
+    const {stdout} = await execFileAsync('smbstatus', ['-b', '--json'], {encoding: 'utf8', timeout: 1200});
+    const parsed = JSON.parse(stdout) as {
       sessions?: Record<
         string,
         {username?: string; remote_machine?: string; protocol_version?: string; session_id?: string}
@@ -1349,11 +1335,13 @@ export async function getLocalHostTelemetry(haConnected: boolean): Promise<Telem
   const hwmon = readLocalHwmon();
   const raplWatts = readRaplPowerWatts();
   const gpus = readLocalGpus();
-  const containers = await readLocalDockerSocket();
   const emhttp = readUnraidEmhttpVars();
   const emhttpDisks = readUnraidDisksIni();
-  const localDisks = readLocalDisks();
-  const sessions = readSmbSessions();
+  const [containers, localDisks, sessions] = await Promise.all([
+    readLocalDockerSocket(),
+    readLocalDisks(),
+    readSmbSessions(),
+  ]);
   const ramPct = mem.total > 0 ? Math.round((mem.used / mem.total) * 100) : 0;
 
   pushHistoryPoint(cpuPercent, ramPct, net.rxMbps, net.txMbps);
@@ -1381,6 +1369,42 @@ export async function getLocalHostTelemetry(haConnected: boolean): Promise<Telem
   if (hostCliCache.nvidiaAvailable) collectorTools.push('nvidia-smi');
   if (hostCliCache.intelGpuTopAvailable) collectorTools.push('intel_gpu_top');
   if (hostCliCache.radeonTopAvailable) collectorTools.push('radeontop');
+
+  const mdResync = Number(emhttp.mdResync || 0);
+  const mdResyncPos = Number(emhttp.mdResyncPos || 0);
+  const mdResyncSize = Number(emhttp.mdResyncSize || 0);
+  const parityProgressPercent =
+    mdResync > 0 && mdResyncSize > 0
+      ? Math.min(100, Math.max(0, Number(((mdResyncPos / mdResyncSize) * 100).toFixed(1))))
+      : 0;
+  const moverRunning = fs.existsSync('/var/run/mover.pid');
+  const localTasks: ServerTaskInfo[] = [];
+  if (mdResync > 0) {
+    localTasks.push({
+      id: 'task-parity',
+      name: 'Unraid Parity Sync / Check',
+      category: 'parity',
+      status: 'running',
+      progressPercent: parityProgressPercent,
+      speedText: emhttp.mdResyncSpeed ? `${emhttp.mdResyncSpeed}` : 'Running',
+      etaText: 'Active',
+      schedule: 'Array Maintenance',
+      lastRun: 'In progress',
+    });
+  }
+  if (moverRunning) {
+    localTasks.push({
+      id: 'task-mover',
+      name: 'Unraid Mover',
+      category: 'mover',
+      status: 'running',
+      progressPercent: 50,
+      speedText: 'Moving',
+      etaText: 'Active',
+      schedule: 'Scheduled',
+      lastRun: 'In progress',
+    });
+  }
 
   return {
     timestamp: Date.now(),
@@ -1412,18 +1436,18 @@ export async function getLocalHostTelemetry(haConnected: boolean): Promise<Telem
     },
     array: {
       state:
-        Number(emhttp.mdResync || 0) > 0
+        mdResync > 0
           ? 'PARITY_SYNC'
           : emhttp.mdState === 'STOPPED'
             ? 'STOPPED'
             : 'STARTED',
       parityValid: emhttp.mdResync === '0' || !emhttp.mdResync,
-      parityCheckRunning: Number(emhttp.mdResync || 0) > 0,
-      parityProgressPercent: 0,
+      parityCheckRunning: mdResync > 0,
+      parityProgressPercent,
       totalBytes,
       usedBytes,
       freeBytes,
-      moverRunning: fs.existsSync('/var/run/mover.pid'),
+      moverRunning,
     },
     history: {
       timestamps: [...historyBuffer.timestamps],
@@ -1438,7 +1462,7 @@ export async function getLocalHostTelemetry(haConnected: boolean): Promise<Telem
     containers,
     vms: [],
     sessions,
-    tasks: [],
+    tasks: localTasks,
     ups: {
       connected: false,
       model: 'No UPS detected on host',
@@ -1459,18 +1483,18 @@ export async function getLocalHostTelemetry(haConnected: boolean): Promise<Telem
 }
 
 async function fetchJsonWithTimeout(url: string, token?: string): Promise<unknown | null> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 2200);
   try {
     const headers: Record<string, string> = {Accept: 'application/json'};
     if (token) headers.Authorization = `Bearer ${token}`;
-    const res = await fetch(url, {headers, signal: controller.signal});
+    const res = await safeOutboundFetch(url, {
+      headers,
+      timeoutMs: 2200,
+      maxBytes: 2 * 1024 * 1024,
+    });
     if (!res.ok) return null;
-    return await res.json();
+    return JSON.parse(res.bodyBuffer.toString('utf8')) as unknown;
   } catch {
     return null;
-  } finally {
-    clearTimeout(timer);
   }
 }
 
@@ -2061,10 +2085,17 @@ export async function pollCustomConnections(connections: CustomConnection[]): Pr
     connections.map(async (conn) => {
       if (!conn.enabled || !conn.url) return conn;
       try {
-        const data = await fetchJsonWithTimeout(conn.url, conn.token);
-        if (data === null) {
-          return {...conn, lastError: 'Unreachable or non-200 response'};
+        const headers: Record<string, string> = {Accept: 'application/json'};
+        if (conn.token) headers.Authorization = `Bearer ${conn.token}`;
+        const res = await safeOutboundFetch(conn.url, {
+          headers,
+          timeoutMs: 2200,
+          maxBytes: 2 * 1024 * 1024,
+        });
+        if (!res.ok) {
+          return {...conn, lastError: `HTTP ${res.status} from upstream`};
         }
+        const data = JSON.parse(res.bodyBuffer.toString('utf8')) as unknown;
         const extracted = getByJsonPath(data, conn.jsonPath);
         return {
           ...conn,
@@ -2079,6 +2110,71 @@ export async function pollCustomConnections(connections: CustomConnection[]): Pr
       }
     })
   );
+}
+
+export interface IntegrationPollCache {
+  updatedAt: number;
+  haConnected: boolean;
+  haEntities: HomeAssistantEntity[];
+  customConnections: CustomConnection[];
+}
+
+let cachedIntegrationPoll: IntegrationPollCache = {
+  updatedAt: 0,
+  haConnected: false,
+  haEntities: [],
+  customConnections: [],
+};
+let integrationPollTimer: NodeJS.Timeout | null = null;
+let integrationPollInFlight: Promise<IntegrationPollCache> | null = null;
+
+export async function refreshIntegrationsCache(cfg: StudioConfig): Promise<IntegrationPollCache> {
+  if (integrationPollInFlight) return await integrationPollInFlight;
+  integrationPollInFlight = (async () => {
+    try {
+      const {haEnabled, haUrl, haToken, customConnections} = cfg.integrations;
+      const [haRes, polledCustom] = await Promise.all([
+        fetchHomeAssistantEntities(haEnabled, haUrl, haToken),
+        pollCustomConnections(customConnections),
+      ]);
+      cachedIntegrationPoll = {
+        updatedAt: Date.now(),
+        haConnected: haRes.connected,
+        haEntities: haRes.entities,
+        customConnections: polledCustom,
+      };
+      return cachedIntegrationPoll;
+    } finally {
+      integrationPollInFlight = null;
+    }
+  })();
+  return await integrationPollInFlight;
+}
+
+export async function getCachedOrRefreshIntegrations(
+  cfg: StudioConfig,
+  maxAgeMs = 4500
+): Promise<IntegrationPollCache> {
+  if (Date.now() - cachedIntegrationPoll.updatedAt < maxAgeMs && cachedIntegrationPoll.updatedAt > 0) {
+    return cachedIntegrationPoll;
+  }
+  return await refreshIntegrationsCache(cfg);
+}
+
+export function startIntegrationPoller(getConfig: () => StudioConfig, intervalMs = 5000): void {
+  stopIntegrationPoller();
+  void refreshIntegrationsCache(getConfig()).catch(() => {});
+  integrationPollTimer = setInterval(() => {
+    void refreshIntegrationsCache(getConfig()).catch(() => {});
+  }, Math.max(2000, intervalMs));
+  integrationPollTimer.unref?.();
+}
+
+export function stopIntegrationPoller(): void {
+  if (integrationPollTimer) {
+    clearInterval(integrationPollTimer);
+    integrationPollTimer = null;
+  }
 }
 
 function hasRealHostHardwarePaths(): boolean {

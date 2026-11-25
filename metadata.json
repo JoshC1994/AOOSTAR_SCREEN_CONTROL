@@ -1,8 +1,6 @@
 {
   "name": "Aoostar Display Studio",
-  "description": "Local Unraid server telemetry monitor and 960x376 USB LCD screen designer for Aoostar NAS hardware, with Home Assistant integration and Unraid Community Apps / Plugin deployment.",
+  "description": "Local Unraid server telemetry monitor and 960x376 USB LCD screen designer for Aoostar NAS hardware, with Home Assistant integration and Unraid Community Apps Docker deployment.",
   "requestFramePermissions": [],
-  "majorCapabilities": [
-    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
-  ]
+  "majorCapabilities": []
 }

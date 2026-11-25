@@ -28,6 +28,12 @@ export async function rasterizeScreenToRgbaBase64(
   if (rotation === 180) {
     ctx.translate(LCD_WIDTH, LCD_HEIGHT);
     ctx.rotate(Math.PI);
+  } else if (rotation === 90) {
+    ctx.translate(LCD_WIDTH, 0);
+    ctx.rotate(Math.PI / 2);
+  } else if (rotation === 270) {
+    ctx.translate(0, LCD_HEIGHT);
+    ctx.rotate(-Math.PI / 2);
   }
 
   ctx.fillStyle = screen.backgroundColor || '#0B0E14';

@@ -228,6 +228,7 @@ export interface CustomConnection {
   type: 'http_json' | 'prometheus_text' | 'unraid_agent';
   url: string;
   token?: string;
+  tokenSet?: boolean;
   jsonPath?: string;
   unit?: string;
   enabled: boolean;
@@ -346,6 +347,9 @@ export interface HardwareSettings {
   sleepEnd: string;
   sleepMode?: 'off' | 'dim';
   sleepDimPercent?: number;
+  bootDisplayOff?: boolean;
+  powerOffOnEmergencyStop?: boolean;
+  serialWritesEnabled?: boolean;
 }
 
 export interface IntegrationSettings {
@@ -353,9 +357,13 @@ export interface IntegrationSettings {
   agentEnabled: boolean;
   agentUrl: string;
   agentToken: string;
+  agentTokenSet?: boolean;
+  clearAgentToken?: boolean;
   haEnabled: boolean;
   haUrl: string;
   haToken: string;
+  haTokenSet?: boolean;
+  clearHaToken?: boolean;
   customConnections: CustomConnection[];
 }
 
@@ -366,6 +374,8 @@ export interface SavedScreen {
   screen: LcdScreen;
 }
 
+export type DaemonLifecycleState = 'idle' | 'active' | 'retrying' | 'sleeping' | 'stopped' | 'error';
+
 export interface HardwareDeployState {
   deployed: boolean;
   deployedAt: string | null;
@@ -374,6 +384,8 @@ export interface HardwareDeployState {
   currentScreenName: string | null;
   isSleeping: boolean;
   effectiveBrightness: number;
+  daemonState?: DaemonLifecycleState;
+  lastError?: string | null;
   screens: LcdScreen[];
 }
 
@@ -420,6 +432,8 @@ export interface LastFrameMeta {
   headerHex: string;
   chunksSent?: number;
   totalChunks?: number;
+  diffMode?: boolean;
+  unchangedSkipped?: boolean;
   initAck?: boolean;
   powerState?: 'on' | 'off';
   lastError?: string | null;
@@ -461,16 +475,19 @@ export interface DiagnosticsSnapshot {
     version: string | null;
     running: boolean;
     pid: number | null;
-    mode: 'daemon' | 'stopped';
+    mode: 'idle' | 'running' | 'absent';
     cfgDir: string;
-    monitorJsonPath: string;
     lastExitCode: number | null;
     lastError: string | null;
     logs: AsterctlLogLine[];
   };
   serialWritesEnabled: boolean;
+  serialWritesEnvEnabled?: boolean;
+  serialWritesConfigEnabled?: boolean;
+  serialWritesEnvLocked?: boolean;
   emergencyStopped: boolean;
   sessionPushArmed: boolean;
+  daemonState?: DaemonLifecycleState;
   activeTransport: 'asterctl' | 'protocol-serial' | 'blocked';
   lastProtocolError: string | null;
   lastPacketPreview: string | null;
@@ -488,3 +505,16 @@ export interface DiagnosticsSnapshot {
 }
 
 export type UiThemePreference = 'dark' | 'light' | 'system';
+
+export interface AuthStatusResponse {
+  authenticated: boolean;
+  username: string | null;
+  usingDefaultPassword: boolean;
+  envOverrideActive: boolean;
+  defaultPasswordPublicBlocked: boolean;
+  apiTokenConfigured?: boolean;
+  apiTokenPrefix?: string | null;
+  apiTokenCreatedAt?: string | null;
+  envApiTokenConfigured?: boolean;
+}
+

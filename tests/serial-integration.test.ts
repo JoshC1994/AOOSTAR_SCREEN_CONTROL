@@ -24,12 +24,13 @@ class MockSerialFdTransport implements SerialPortTransport {
   public flushCount = 0;
   public sleepCalls: number[] = [];
   public closed = false;
-  public rxQueue: Buffer;
+  public rxQueue: Buffer = Buffer.alloc(0);
+  private readonly ackResponseOnDisplayOn: Buffer;
   public failFirstNWrites = 0;
   private writeAttempt = 0;
 
-  constructor(rxBytes: number[] = [0x41]) {
-    this.rxQueue = Buffer.from(rxBytes);
+  constructor(rxBytesOnDisplayOn: number[] = [0x41]) {
+    this.ackResponseOnDisplayOn = Buffer.from(rxBytesOnDisplayOn);
   }
 
   writeAll(data: Buffer): void {
@@ -40,7 +41,11 @@ class MockSerialFdTransport implements SerialPortTransport {
       err.code = 'EIO';
       throw err;
     }
-    this.writes.push(Buffer.from(data));
+    const copy = Buffer.from(data);
+    this.writes.push(copy);
+    if (copy.equals(DISPLAY_ON) && this.ackResponseOnDisplayOn.length > 0) {
+      this.rxQueue = Buffer.concat([this.rxQueue, this.ackResponseOnDisplayOn]);
+    }
   }
 
   flush(): void {

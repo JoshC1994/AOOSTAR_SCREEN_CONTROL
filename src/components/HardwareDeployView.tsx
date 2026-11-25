@@ -1,6 +1,7 @@
 import {useEffect, useState} from 'react';
 import {Check, ChevronDown, Copy, Download, RefreshCw, Terminal, Usb} from 'lucide-react';
 import type {DetectedUsbDevice, LastFrameMeta, StudioConfig} from '../types.ts';
+import {apiFetch} from '../utils/apiClient.ts';
 
 interface HardwareDeployViewProps {
   config: StudioConfig;
@@ -11,14 +12,15 @@ interface HardwareDeployViewProps {
 export function HardwareDeployView({config, lastFrame, onUpdateConfig}: HardwareDeployViewProps) {
   const [devices, setDevices] = useState<DetectedUsbDevice[]>([]);
   const [frameMeta, setFrameMeta] = useState<LastFrameMeta | null>(lastFrame);
-  const [deployTab, setDeployTab] = useState<'plg' | 'xml' | 'compose'>('plg');
+  const [deployTab, setDeployTab] = useState<'xml' | 'compose'>('xml');
   const [exportCode, setExportCode] = useState('');
   const [copied, setCopied] = useState(false);
   const [showTechDetails, setShowTechDetails] = useState(false);
 
   const scanHardware = async () => {
     try {
-      const res = await fetch('/api/hardware/devices');
+      const res = await apiFetch('/api/hardware/devices');
+      if (!res.ok) return;
       const data = (await res.json()) as {devices: DetectedUsbDevice[]; lastFrame: LastFrameMeta};
       setDevices(data.devices);
       setFrameMeta(data.lastFrame);
@@ -37,13 +39,9 @@ export function HardwareDeployView({config, lastFrame, onUpdateConfig}: Hardware
 
   useEffect(() => {
     const endpoint =
-      deployTab === 'plg'
-        ? '/api/export/unraid-plg'
-        : deployTab === 'xml'
-          ? '/api/export/unraid-xml'
-          : '/api/export/docker-compose';
-    fetch(endpoint)
-      .then((r) => r.text())
+      deployTab === 'xml' ? '/api/export/unraid-xml' : '/api/export/docker-compose';
+    apiFetch(endpoint)
+      .then((r) => (r.ok ? r.text() : ''))
       .then((txt) => setExportCode(txt))
       .catch(() => setExportCode(''));
   }, [deployTab]);
@@ -56,11 +54,7 @@ export function HardwareDeployView({config, lastFrame, onUpdateConfig}: Hardware
 
   const handleDownload = () => {
     const filename =
-      deployTab === 'plg'
-        ? 'aoostar-display-studio.plg'
-        : deployTab === 'xml'
-          ? 'my-aoostar-display-studio.xml'
-          : 'docker-compose.yml';
+      deployTab === 'xml' ? 'my-aoostar-display-studio.xml' : 'docker-compose.yml';
     const blob = new Blob([exportCode], {type: 'text/plain;charset=utf-8'});
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -72,16 +66,16 @@ export function HardwareDeployView({config, lastFrame, onUpdateConfig}: Hardware
 
   return (
     <div className="max-w-[1280px] mx-auto p-6 space-y-6">
-      {/* Native Unraid Plugin (.plg) & Testing Guide */}
+      {/* Unraid Docker Deployment Export */}
       <section className="rounded-lg border border-[#1F2937] bg-[#0F131C] overflow-hidden">
         <div className="px-5 py-4 border-b border-[#1F2937] flex flex-wrap items-center justify-between gap-4">
           <div>
             <h1 className="text-base font-display font-semibold text-slate-100 flex items-center gap-2">
               <Terminal className="w-4 h-4 text-amber-400" />
-              Native Unraid Plugin (.plg) &amp; Testing Guide
+              Unraid Docker Deployment
             </h1>
             <p className="text-xs text-slate-400 mt-1">
-              Download the `.plg` manifest to install directly via Unraid Plugins or submit to Community Applications.
+              Export the Unraid Community Applications template or Docker Compose manifest for container deployment.
             </p>
           </div>
 
@@ -89,7 +83,6 @@ export function HardwareDeployView({config, lastFrame, onUpdateConfig}: Hardware
             <div className="flex items-center p-0.5 rounded bg-[#0B0E14] border border-[#1F2937]">
               {(
                 [
-                  ['plg', 'Unraid Plugin (.plg)'],
                   ['xml', 'Docker Template (.xml)'],
                   ['compose', 'Docker Compose'],
                 ] as const
@@ -118,7 +111,7 @@ export function HardwareDeployView({config, lastFrame, onUpdateConfig}: Hardware
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded bg-amber-500 text-slate-950 hover:bg-amber-400 text-xs font-semibold"
             >
               <Download className="w-3.5 h-3.5" />
-              Download {deployTab === 'plg' ? '.plg' : deployTab === 'xml' ? '.xml' : '.yml'}
+              Download {deployTab === 'xml' ? '.xml' : '.yml'}
             </button>
           </div>
         </div>
@@ -127,33 +120,31 @@ export function HardwareDeployView({config, lastFrame, onUpdateConfig}: Hardware
           {exportCode}
         </pre>
 
-        {/* How to Test on Unraid */}
         <div className="p-5 bg-[#0D111A] space-y-3">
-          <h2 className="text-sm font-semibold text-slate-100">How to Test the `.plg` Plugin on Your Unraid Server</h2>
+          <h2 className="text-sm font-semibold text-slate-100">Deploying on Unraid Docker</h2>
           <ol className="space-y-2 text-xs text-slate-300 list-decimal list-inside leading-relaxed">
             <li>
-              Click <span className="font-semibold text-slate-100">Download .plg</span> above and copy <code className="font-mono text-amber-300">aoostar-display-studio.plg</code> to your Unraid flash drive at <code className="font-mono text-slate-200">/boot/config/plugins/</code> (or host it in a GitHub repo and paste the raw URL into <span className="text-slate-100">Plugins -&gt; Install Plugin</span>).
+              Add the container via Community Applications or copy the exported template to{' '}
+              <code className="font-mono text-slate-200">/boot/config/plugins/dockerMan/templates-user/</code>.
             </li>
             <li>
-              In the Unraid Web Terminal (or SSH), run the native installer test command:
-              <code className="block mt-1 p-2 rounded bg-[#090C11] border border-[#1F2937] font-mono text-emerald-400">
-                plugin install /boot/config/plugins/aoostar-display-studio.plg
-              </code>
+              Pass through <code className="font-mono text-amber-300">/dev/ttyACM0</code> (or stable udev symlink{' '}
+              <code className="font-mono text-amber-300">/dev/aoostar_lcd</code>) and read-only host mounts for{' '}
+              <code className="font-mono text-slate-200">/var/local/emhttp</code>,{' '}
+              <code className="font-mono text-slate-200">/sys/class/hwmon</code>, and{' '}
+              <code className="font-mono text-slate-200">/var/run/docker.sock</code>.
             </li>
             <li>
-              Copy your built app bundle (<code className="font-mono text-slate-200">dist/</code>, <code className="font-mono text-slate-200">server.ts</code>, <code className="font-mono text-slate-200">src/</code>, <code className="font-mono text-slate-200">package.json</code>, <code className="font-mono text-slate-200">node_modules/</code>) into <code className="font-mono text-slate-200">/usr/local/emhttp/plugins/aoostar-display-studio/app/</code> and start the service:
-              <code className="block mt-1 p-2 rounded bg-[#090C11] border border-[#1F2937] font-mono text-emerald-400">
-                /boot/config/plugins/aoostar-display-studio/rc.aoostar-display-studio start
-              </code>
+              Sign in at first launch with default credentials{' '}
+              <code className="font-mono text-amber-300">admin / admin</code> (local network only until changed) and update them in{' '}
+              <code className="font-mono text-slate-200">Settings &gt; Security</code>, or override via{' '}
+              <code className="font-mono text-slate-200">AOOSTAR_ADMIN_USER</code> /{' '}
+              <code className="font-mono text-slate-200">AOOSTAR_ADMIN_PASSWORD</code>. Delete{' '}
+              <code className="font-mono text-slate-200">/app/data/credentials.json</code> and restart to recover access without losing screens.
             </li>
             <li>
-              Verify the USB LCD udev symlink &amp; service logs:
-              <code className="block mt-1 p-2 rounded bg-[#090C11] border border-[#1F2937] font-mono text-sky-300">
-                ls -l /dev/aoostar_lcd /dev/ttyACM* &amp;&amp; tail -n 30 /var/log/aoostar-display-studio.log
-              </code>
-            </li>
-            <li>
-              Open <span className="font-semibold text-slate-100">Utilities -&gt; Aoostar Display Studio</span> in the Unraid WebGUI (or browse to <code className="font-mono text-slate-200">http://&lt;UNRAID-IP&gt;:3088</code>). To uninstall cleanly while testing, run <code className="font-mono text-slate-200">plugin remove aoostar-display-studio.plg</code>.
+              Test packet framing safely via Dry Run on Diagnostics before setting{' '}
+              <code className="font-mono text-slate-200">AOOSTAR_ENABLE_SERIAL_WRITES=true</code>.
             </li>
           </ol>
         </div>

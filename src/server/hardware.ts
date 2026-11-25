@@ -1,6 +1,14 @@
 import crypto from 'node:crypto';
-import type {DiagnosticsSnapshot, ExposedEntity, LastFrameMeta, LcdScreen, TelemetrySnapshot} from '../types.ts';
+import type {
+  DaemonLifecycleState,
+  DiagnosticsSnapshot,
+  ExposedEntity,
+  LastFrameMeta,
+  LcdScreen,
+  TelemetrySnapshot,
+} from '../types.ts';
 import {
+  applyBrightnessScaleRgba,
   CRC_ALGORITHM,
   DISPLAY_HEIGHT,
   DISPLAY_WIDTH,
@@ -15,29 +23,29 @@ import {
   canPerformRealSerialWrite,
   clearEmergencyStop,
   closeActiveSerialTransport,
+  closeActiveSerialTransportAsync,
   getSerialDiagnosticsState,
   inspectSerialPermissions,
+  isConfigSerialWritesEnabled,
   isEmergencyStopped,
+  isSerialWritesActive,
   isSerialWritesEnvEnabled,
-  pushFrameOverRealSerial,
-  resolveStrictAoostarDevice,
+  isSerialWritesEnvLocked,
+  pushFrameOverRealSerialAsync,
+  resetFrameDiffCache,
   runDryRunFrame,
-  runSafeDisplayOnOverSerial,
+  runSafeDisplayOnOverSerialAsync,
   scanUsbSerialDevices,
-  sendDisplayOffOverSerial,
+  sendDisplayOffOverSerialAsync,
+  setConfigSerialWritesEnabled,
   setLastProtocolError,
 } from './aoostar/serial.ts';
 import {
   createCalibrationTestRgba,
-  detectAsterctlBinary,
   getAsterctlStatus,
-  runOneShotAsterctlCommand,
-  sendImageViaAsterctl,
-  startOrRestartAsterctlDaemon,
+  runAsterctlPowerDiagnostic,
   stopAsterctlProcess,
   testAsterctlIntegration,
-  writeAsterctlMonitorAssets,
-  writeAsterctlSensorSnapshot,
 } from './aoostar/asterctl.ts';
 
 const HEADER_START_HEX = formatHexPreview(HEADER_START, 16);
@@ -56,6 +64,8 @@ let lastFrameMeta: LastFrameMeta = {
   headerHex: HEADER_START_HEX,
   chunksSent: 0,
   totalChunks: EXPECTED_TOTAL_CHUNKS,
+  diffMode: true,
+  unchangedSkipped: false,
   initAck: false,
   powerState: 'off',
   lastError: null,
@@ -67,13 +77,19 @@ export {
   activateEmergencyStop,
   clearEmergencyStop,
   closeActiveSerialTransport,
+  closeActiveSerialTransportAsync,
   inspectSerialPermissions,
+  isConfigSerialWritesEnabled,
   isEmergencyStopped,
+  isSerialWritesActive,
   isSerialWritesEnvEnabled,
+  isSerialWritesEnvLocked,
+  resetFrameDiffCache,
+  runAsterctlPowerDiagnostic,
   scanUsbSerialDevices,
+  setConfigSerialWritesEnabled,
   stopAsterctlProcess,
   testAsterctlIntegration,
-  writeAsterctlSensorSnapshot,
 };
 
 export function getLastFrameMeta(): LastFrameMeta {
@@ -84,7 +100,15 @@ export function getLastFrameBuffer(): Buffer | null {
   return lastRgb565Buffer;
 }
 
-export function buildDiagnosticsSnapshot(sessionPushArmed: boolean, preferredDevicePath?: string): DiagnosticsSnapshot {
+export function setLastFrameMeta(meta: LastFrameMeta): void {
+  lastFrameMeta = meta;
+}
+
+export function buildDiagnosticsSnapshot(
+  sessionPushArmed: boolean,
+  preferredDevicePath?: string,
+  daemonState?: DaemonLifecycleState
+): DiagnosticsSnapshot {
   const devices = scanUsbSerialDevices();
   const perms = inspectSerialPermissions(preferredDevicePath);
   const asterctl = getAsterctlStatus();
@@ -94,9 +118,7 @@ export function buildDiagnosticsSnapshot(sessionPushArmed: boolean, preferredDev
   const activeTransport: DiagnosticsSnapshot['activeTransport'] =
     !serialDiag.serialWritesEnabled || serialDiag.emergencyStopped
       ? 'blocked'
-      : asterctl.available
-        ? 'asterctl'
-        : 'protocol-serial';
+      : 'protocol-serial';
 
   return {
     detectedDevicePath: aoostarMatch?.path ?? perms.devicePath ?? null,
@@ -105,8 +127,12 @@ export function buildDiagnosticsSnapshot(sessionPushArmed: boolean, preferredDev
     detectedDevices: devices,
     asterctl,
     serialWritesEnabled: serialDiag.serialWritesEnabled,
+    serialWritesEnvEnabled: serialDiag.serialWritesEnvEnabled,
+    serialWritesConfigEnabled: serialDiag.serialWritesConfigEnabled,
+    serialWritesEnvLocked: serialDiag.serialWritesEnvLocked,
     emergencyStopped: serialDiag.emergencyStopped,
     sessionPushArmed,
+    daemonState,
     activeTransport,
     lastProtocolError: serialDiag.lastProtocolError || asterctl.lastError,
     lastPacketPreview: serialDiag.lastPacketPreview,
@@ -149,6 +175,8 @@ export function dryRunScreenFrame(params: {
     headerHex: dry.headerStartHex,
     chunksSent: 0,
     totalChunks: dry.totalChunks,
+    diffMode: false,
+    unchangedSkipped: false,
     initAck: false,
     powerState: 'off',
     lastError: null,
@@ -158,9 +186,10 @@ export function dryRunScreenFrame(params: {
 }
 
 /**
- * Pushes a rendered frame using Path A (asterctl) when available,
- * or exact Path B protocol (protocol.ts + serial.ts) ONLY if asterctl binary is missing.
- * Never falls back silently to virtual-buffer on failure; throws on any error.
+ * Primary LCD frame pusher:
+ * Uses Node async diff-cached USB-UART serial transport (`aoostar-rs` exact wire format),
+ * avoiding process spawning per frame while preserving strict VID:PID, ACK, and safety gates.
+ * `asterctl` remains available for Diagnostics (--simulate / --on) checks.
  */
 export async function pushHardwareFrame(params: {
   rgbaBase64?: string;
@@ -168,15 +197,23 @@ export async function pushHardwareFrame(params: {
   screenId: string;
   screenName: string;
   devicePath: string;
+  brightnessPercent?: number;
+  brightnessKey?: number;
+  forceFullRefresh?: boolean;
   powerOff?: boolean;
 }): Promise<LastFrameMeta> {
-  const rgbaBuf = params.rgbaBuffer
+  const rawRgba = params.rgbaBuffer
     ? params.rgbaBuffer
     : params.rgbaBase64
       ? Buffer.from(params.rgbaBase64, 'base64')
       : Buffer.alloc(DISPLAY_WIDTH * DISPLAY_HEIGHT * 4);
 
-  const rgb565 = rgbaToRgb565Le(rgbaBuf, DISPLAY_WIDTH, DISPLAY_HEIGHT);
+  const scaledRgba =
+    params.brightnessPercent !== undefined && params.brightnessPercent < 100
+      ? applyBrightnessScaleRgba(rawRgba, params.brightnessPercent, DISPLAY_WIDTH, DISPLAY_HEIGHT)
+      : rawRgba;
+
+  const rgb565 = rgbaToRgb565Le(scaledRgba, DISPLAY_WIDTH, DISPLAY_HEIGHT);
   const digestShort = crypto.createHash('sha256').update(rgb565).digest('hex').slice(0, 12).toUpperCase();
   lastRgb565Buffer = rgb565;
 
@@ -197,6 +234,8 @@ export async function pushHardwareFrame(params: {
       headerHex: HEADER_START_HEX,
       chunksSent: 0,
       totalChunks: EXPECTED_TOTAL_CHUNKS,
+      diffMode: true,
+      unchangedSkipped: false,
       initAck: false,
       powerState: 'off',
       lastError: gate.reason,
@@ -204,40 +243,13 @@ export async function pushHardwareFrame(params: {
     throw new Error(gate.reason || 'Serial writes blocked');
   }
 
-  const bin = detectAsterctlBinary();
-
   try {
-    if (params.powerOff) {
-      if (bin.available) {
-        const resolved = resolveStrictAoostarDevice(params.devicePath);
-        if (!resolved.devicePath) {
-          throw new Error(resolved.error || 'Aoostar USB device (0416:90a1) not found');
-        }
-        await stopAsterctlProcess();
-        await runOneShotAsterctlCommand(['--device', resolved.devicePath, '--off']);
-        lastFrameMeta = {
-          pushedAt: new Date().toISOString(),
-          screenId: params.screenId,
-          screenName: params.screenName,
-          width: DISPLAY_WIDTH,
-          height: DISPLAY_HEIGHT,
-          byteLength: rgb565.length,
-          crc16Hex: `SHA256:${digestShort}`,
-          frameDigestHex: digestShort,
-          crcAlgorithm: 'none',
-          devicePath: resolved.devicePath,
-          deliveryMode: 'asterctl',
-          headerHex: HEADER_START_HEX,
-          chunksSent: 0,
-          totalChunks: EXPECTED_TOTAL_CHUNKS,
-          initAck: true,
-          powerState: 'off',
-          lastError: null,
-        };
-        return lastFrameMeta;
-      }
+    if (getAsterctlStatus().running) {
+      await stopAsterctlProcess();
+    }
 
-      const offRes = sendDisplayOffOverSerial(params.devicePath);
+    if (params.powerOff) {
+      const offRes = await sendDisplayOffOverSerialAsync(params.devicePath);
       lastFrameMeta = {
         pushedAt: new Date().toISOString(),
         screenId: params.screenId,
@@ -253,6 +265,8 @@ export async function pushHardwareFrame(params: {
         headerHex: HEADER_START_HEX,
         chunksSent: 0,
         totalChunks: EXPECTED_TOTAL_CHUNKS,
+        diffMode: false,
+        unchangedSkipped: false,
         initAck: true,
         powerState: 'off',
         lastError: null,
@@ -260,39 +274,13 @@ export async function pushHardwareFrame(params: {
       return lastFrameMeta;
     }
 
-    // Path A (Preferred): authoritative asterctl binary
-    if (bin.available) {
-      const res = await sendImageViaAsterctl({
-        rgbaBuffer: rgbaBuf,
-        requestedDevicePath: params.devicePath,
-      });
-      lastFrameMeta = {
-        pushedAt: new Date().toISOString(),
-        screenId: params.screenId,
-        screenName: params.screenName,
-        width: DISPLAY_WIDTH,
-        height: DISPLAY_HEIGHT,
-        byteLength: rgb565.length,
-        crc16Hex: `SHA256:${digestShort}`,
-        frameDigestHex: digestShort,
-        crcAlgorithm: 'none',
-        devicePath: res.devicePath,
-        deliveryMode: 'asterctl',
-        headerHex: HEADER_START_HEX,
-        chunksSent: EXPECTED_TOTAL_CHUNKS,
-        totalChunks: EXPECTED_TOTAL_CHUNKS,
-        initAck: true,
-        powerState: 'on',
-        lastError: null,
-      };
-      return lastFrameMeta;
-    }
-
-    // Path B (Only when asterctl binary is unavailable): exact aoostar-rs serial protocol
-    const res = pushFrameOverRealSerial({
-      rgbaBuffer: rgbaBuf,
+    const res = await pushFrameOverRealSerialAsync({
+      rgbaBuffer: scaledRgba,
       requestedDevicePath: params.devicePath,
+      forceFullRefresh: Boolean(params.forceFullRefresh),
+      brightnessKey: params.brightnessKey ?? params.brightnessPercent,
     });
+
     lastFrameMeta = {
       pushedAt: new Date().toISOString(),
       screenId: params.screenId,
@@ -308,6 +296,8 @@ export async function pushHardwareFrame(params: {
       headerHex: HEADER_START_HEX,
       chunksSent: res.chunksSent,
       totalChunks: res.totalChunks,
+      diffMode: !res.fullSync,
+      unchangedSkipped: res.unchangedSkipped,
       initAck: true,
       powerState: 'on',
       lastError: null,
@@ -331,53 +321,14 @@ export async function pushHardwareFrame(params: {
       headerHex: HEADER_START_HEX,
       chunksSent: 0,
       totalChunks: EXPECTED_TOTAL_CHUNKS,
+      diffMode: true,
+      unchangedSkipped: false,
       initAck: false,
       powerState: 'off',
       lastError: msg,
     };
     throw err;
   }
-}
-
-/**
- * Path A daemon sync: generates monitor.json + panel PNGs + sensor snapshot and restarts asterctl.
- */
-export async function deployScreensWithAsterctl(params: {
-  screensWithBuffers: Array<{screen: LcdScreen; rgbaBuffer: Buffer}>;
-  telemetry: TelemetrySnapshot;
-  exposedEntities: ExposedEntity[];
-  devicePath: string;
-}): Promise<{pid: number; binaryPath: string; devicePath: string; monitorJsonPath: string}> {
-  writeAsterctlSensorSnapshot(params.telemetry, params.exposedEntities);
-  const assets = writeAsterctlMonitorAssets({
-    screens: params.screensWithBuffers,
-    refreshSec: 1,
-  });
-  const started = await startOrRestartAsterctlDaemon({
-    requestedDevicePath: params.devicePath,
-  });
-  lastFrameMeta = {
-    pushedAt: new Date().toISOString(),
-    screenId: params.screensWithBuffers[0]?.screen.id ?? null,
-    screenName: params.screensWithBuffers[0]?.screen.name ?? null,
-    width: DISPLAY_WIDTH,
-    height: DISPLAY_HEIGHT,
-    byteLength: EXPECTED_RGB565_BYTES,
-    crc16Hex: 'Managed by asterctl',
-    crcAlgorithm: 'none',
-    devicePath: started.devicePath,
-    deliveryMode: 'asterctl',
-    headerHex: HEADER_START_HEX,
-    chunksSent: EXPECTED_TOTAL_CHUNKS,
-    totalChunks: EXPECTED_TOTAL_CHUNKS,
-    initAck: true,
-    powerState: 'on',
-    lastError: null,
-  };
-  return {
-    ...started,
-    monitorJsonPath: assets.monitorJsonPath,
-  };
 }
 
 export async function runSafeHardwareTest(params: {
@@ -397,26 +348,12 @@ export async function runSafeHardwareTest(params: {
     throw new Error(gate.reason || 'Serial writes disabled');
   }
 
-  const bin = detectAsterctlBinary();
+  if (getAsterctlStatus().running) {
+    await stopAsterctlProcess();
+  }
 
   if (params.mode === 'display-on') {
-    if (bin.available) {
-      const resolved = resolveStrictAoostarDevice(params.devicePath);
-      if (!resolved.devicePath) {
-        throw new Error(resolved.error || 'Aoostar USB device (0416:90a1) not found');
-      }
-      await stopAsterctlProcess();
-      const out = await runOneShotAsterctlCommand(['--device', resolved.devicePath, '--on']);
-      return {
-        ok: true,
-        transport: 'asterctl',
-        devicePath: resolved.devicePath,
-        ackOk: true,
-        output: [out.stdout, out.stderr].filter(Boolean).join('\n'),
-      };
-    }
-
-    const res = runSafeDisplayOnOverSerial(params.devicePath);
+    const res = await runSafeDisplayOnOverSerialAsync(params.devicePath);
     return {
       ok: true,
       transport: 'protocol-serial',
@@ -432,6 +369,7 @@ export async function runSafeHardwareTest(params: {
     screenId: params.screenId || 'safe-test-frame',
     screenName: params.screenName || 'Aoostar Safe Test Pattern',
     devicePath: params.devicePath,
+    forceFullRefresh: true,
   });
 
   return {

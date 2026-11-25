@@ -181,13 +181,13 @@ export function LcdWidgetRenderer({
     const isRam = binding === 'ram_percent';
     const series = isNet
       ? [
-          {name: 'RX Mbps', data: hist?.netRxSeries ?? [80, 110, 95]},
-          {name: 'TX Mbps', data: hist?.netTxSeries ?? [20, 32, 28]},
+          {name: 'RX Mbps', data: hist?.netRxSeries ?? []},
+          {name: 'TX Mbps', data: hist?.netTxSeries ?? []},
         ]
       : [
           {
             name: isRam ? 'Memory %' : 'CPU %',
-            data: isRam ? hist?.ramSeries ?? [55, 56, 55] : hist?.cpuSeries ?? [20, 24, 22],
+            data: isRam ? hist?.ramSeries ?? [] : hist?.cpuSeries ?? [],
           },
         ];
 
@@ -357,7 +357,7 @@ export function LcdWidgetRenderer({
     try {
       let hydrated = raw.replace(/"\{\{history:([^}]+)\}\}"/g, (_m, id: string) => {
         const ent = exposedEntities.find((e) => e.id === id.trim());
-        return JSON.stringify(ent?.history ?? [10, 20, 15, 25]);
+        return JSON.stringify(ent?.history ?? []);
       });
       hydrated = hydrated.replace(/"\{\{([^}]+)\}\}"/g, (_m, id: string) => {
         const ent = exposedEntities.find((e) => e.id === id.trim());
