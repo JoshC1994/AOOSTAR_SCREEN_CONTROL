@@ -1179,35 +1179,148 @@ function normalizeUsbId(raw) {
   const cleaned = raw.trim().toLowerCase().replace(/^0x/, "");
   return cleaned ? cleaned.padStart(4, "0") : "unknown";
 }
-function readUsbAttrsForTty(devPath) {
-  let realName = path.basename(devPath);
+function decodeLinuxDevNumber(rdev) {
+  if (!Number.isFinite(rdev) || rdev <= 0) return null;
+  const d = BigInt(Math.trunc(rdev));
+  const major = Number(d >> 8n & 0xfffn | d >> 32n & ~0xfffn);
+  const minor = Number(d & 0xffn | d >> 12n & ~0xffn);
+  if (major <= 0 && minor <= 0) return null;
+  return { major, minor };
+}
+function parseUsbUeventProduct(ueventText, dirName) {
+  const isUsbNode = /^DEVTYPE=usb_(device|interface)$/m.test(ueventText) || /^SUBSYSTEM=usb$/m.test(ueventText) || /^INTERFACE=/m.test(ueventText) || /^\d+-[\d.]+(?::[\d.]+)?$/.test(dirName);
+  if (!isUsbNode) return null;
+  const prodMatch = /^PRODUCT=([0-9a-fA-F]+)\/([0-9a-fA-F]+)(?:\/|$)/m.exec(ueventText);
+  if (!prodMatch) return null;
+  const vendorId = normalizeUsbId(prodMatch[1]);
+  const productId = normalizeUsbId(prodMatch[2]);
+  if (vendorId === "unknown" || productId === "unknown") return null;
+  return { vendorId, productId };
+}
+function readUsbAttrsUpTree(startDir, sysRoot, defaultName) {
+  const devicesRoot = path.resolve(sysRoot, "devices");
+  const resolvedSysRoot = path.resolve(sysRoot);
+  let cur;
   try {
-    realName = path.basename(fs.realpathSync(devPath));
+    cur = fs.realpathSync(startDir);
   } catch {
+    return null;
   }
-  let vendorId = "unknown";
-  let productId = "unknown";
-  let name = realName;
-  const candidateDirs = [
-    `/sys/class/tty/${realName}/device/..`,
-    `/sys/class/tty/${realName}/device/../..`
-  ];
-  for (const dir of candidateDirs) {
+  let fallbackIds = null;
+  let detectedName = defaultName;
+  for (let depth = 0; depth < 14; depth++) {
     try {
-      if (fs.existsSync(path.join(dir, "idVendor"))) {
-        vendorId = normalizeUsbId(fs.readFileSync(path.join(dir, "idVendor"), "utf8"));
+      const productPath = path.join(cur, "product");
+      if (fs.existsSync(productPath)) {
+        const prod = fs.readFileSync(productPath, "utf8").trim();
+        if (prod) detectedName = prod;
       }
-      if (fs.existsSync(path.join(dir, "idProduct"))) {
-        productId = normalizeUsbId(fs.readFileSync(path.join(dir, "idProduct"), "utf8"));
+      const idVendorPath = path.join(cur, "idVendor");
+      const idProductPath = path.join(cur, "idProduct");
+      if (fs.existsSync(idVendorPath) && fs.existsSync(idProductPath)) {
+        const vendorId = normalizeUsbId(fs.readFileSync(idVendorPath, "utf8"));
+        const productId = normalizeUsbId(fs.readFileSync(idProductPath, "utf8"));
+        if (vendorId !== "unknown" && productId !== "unknown") {
+          return { vendorId, productId, name: detectedName, source: cur };
+        }
       }
-      if (fs.existsSync(path.join(dir, "product"))) {
-        name = fs.readFileSync(path.join(dir, "product"), "utf8").trim();
+      if (!fallbackIds) {
+        const ueventPath = path.join(cur, "uevent");
+        if (fs.existsSync(ueventPath)) {
+          const parsed = parseUsbUeventProduct(
+            fs.readFileSync(ueventPath, "utf8"),
+            path.basename(cur)
+          );
+          if (parsed) {
+            fallbackIds = parsed;
+          }
+        }
       }
-      if (vendorId !== "unknown" && productId !== "unknown") break;
     } catch {
     }
+    if (cur === devicesRoot || cur === resolvedSysRoot) break;
+    const parent = path.dirname(cur);
+    if (parent === cur) break;
+    cur = parent;
   }
-  return { vendorId, productId, name };
+  if (fallbackIds) {
+    return {
+      vendorId: fallbackIds.vendorId,
+      productId: fallbackIds.productId,
+      name: detectedName,
+      source: "uevent"
+    };
+  }
+  return null;
+}
+function readUsbAttrsForTty(devPath, options) {
+  const sysRoot = options?.sysRoot ?? "/sys";
+  const requestedName = path.basename(devPath);
+  let realPath = options?.devRealPath ?? devPath;
+  if (!options?.devRealPath) {
+    try {
+      realPath = fs.realpathSync(devPath);
+    } catch {
+      realPath = devPath;
+    }
+  }
+  const realName = path.basename(realPath);
+  const ttyNames = /* @__PURE__ */ new Set([realName, requestedName]);
+  const startDirs = [];
+  const addStartDir = (candidate) => {
+    try {
+      const resolved = fs.realpathSync(candidate);
+      if (!startDirs.includes(resolved)) {
+        startDirs.push(resolved);
+      }
+      return resolved;
+    } catch {
+      return null;
+    }
+  };
+  let rdev = options?.rdev;
+  if (rdev === void 0) {
+    try {
+      rdev = fs.statSync(devPath).rdev;
+    } catch {
+      rdev = void 0;
+    }
+  }
+  if (rdev !== void 0) {
+    const devNum = decodeLinuxDevNumber(rdev);
+    if (devNum) {
+      const charBase = path.join(sysRoot, "dev", "char", `${devNum.major}:${devNum.minor}`);
+      addStartDir(path.join(charBase, "device"));
+      const resolvedChar = addStartDir(charBase);
+      if (resolvedChar) {
+        ttyNames.add(path.basename(resolvedChar));
+      }
+    }
+  }
+  for (const name of ttyNames) {
+    const ttyBase = path.join(sysRoot, "class", "tty", name);
+    addStartDir(path.join(ttyBase, "device"));
+    addStartDir(ttyBase);
+  }
+  for (const startDir of startDirs) {
+    const attrs = readUsbAttrsUpTree(startDir, sysRoot, realName);
+    if (attrs) return attrs;
+  }
+  const usbDevicesRoot = path.join(sysRoot, "bus", "usb", "devices");
+  try {
+    const entries = fs.readdirSync(usbDevicesRoot);
+    for (const entry of entries) {
+      const entryDir = path.join(usbDevicesRoot, entry);
+      for (const name of ttyNames) {
+        if (fs.existsSync(path.join(entryDir, "tty", name)) || fs.existsSync(path.join(entryDir, name))) {
+          const attrs = readUsbAttrsUpTree(entryDir, sysRoot, realName);
+          if (attrs) return attrs;
+        }
+      }
+    }
+  } catch {
+  }
+  return { vendorId: "unknown", productId: "unknown", name: realName };
 }
 function isAllowedTestPtyPath(candidatePath) {
   const ptyOverride = (process.env.AOOSTAR_TEST_PTY_PATH || "").trim();
@@ -1279,7 +1392,6 @@ function scanUsbSerialDevices() {
 function resolveStrictAoostarDevice(requestedPath, options) {
   const trimmed = (requestedPath || "").trim();
   const forceAllowed = Boolean(options?.forceUnverifiedDevice && options?.confirmUnverifiedDevice);
-  const devices = trimmed && isAllowedTestPtyPath(trimmed) ? [] : scanUsbSerialDevices();
   if (trimmed) {
     if (!isAllowedSerialDevicePath(trimmed)) {
       return {
@@ -1316,14 +1428,16 @@ function resolveStrictAoostarDevice(requestedPath, options) {
         error: `Serial device ${trimmed} does not exist`
       };
     }
-    const attrs = readUsbAttrsForTty(trimmed);
+    const attrs = readUsbAttrsForTty(trimmed, options?.sysRoot ? { sysRoot: options.sysRoot } : void 0);
     const isMatch = attrs.vendorId === USB_UART_VID_HEX && attrs.productId === USB_UART_PID_HEX;
     if (!isMatch && !forceAllowed) {
       const gotId = attrs.vendorId === "unknown" || attrs.productId === "unknown" ? "unknown USB VID/PID" : `0x${attrs.vendorId}:0x${attrs.productId}`;
+      const sysRootCheck = options?.sysRoot ?? "/sys";
+      const sysfsHint = gotId === "unknown USB VID/PID" && !fs.existsSync(path.join(sysRootCheck, "class", "tty")) && !fs.existsSync(path.join(sysRootCheck, "dev", "char")) ? " (sysfs tty/dev metadata unavailable in container; ensure /sys is accessible)" : "";
       return {
         devicePath: null,
         match: null,
-        error: `Device ${trimmed} failed strict VID/PID validation (${gotId}; expected 0x${USB_UART_VID_HEX}:0x${USB_UART_PID_HEX}).`
+        error: `Device ${trimmed} failed strict VID/PID validation (${gotId}; expected 0x${USB_UART_VID_HEX}:0x${USB_UART_PID_HEX})${sysfsHint}.`
       };
     }
     let writable = false;
@@ -1350,6 +1464,7 @@ function resolveStrictAoostarDevice(requestedPath, options) {
   if (ptyOverride && isAllowedTestPtyPath(ptyOverride)) {
     return resolveStrictAoostarDevice(ptyOverride);
   }
+  const devices = scanUsbSerialDevices();
   const exact = devices.find((d) => d.isAoostarMatch);
   if (exact) {
     return { devicePath: exact.path, match: exact, error: null };

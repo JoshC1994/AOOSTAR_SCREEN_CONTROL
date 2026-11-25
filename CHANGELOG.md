@@ -6,6 +6,7 @@
 - Added `docker-entrypoint.sh` using `gosu` so containers start briefly as root to automatically repair mismatched ownership on mounted `/app/data` and `/app/data/uploads` directories (defaulting to UID/GID `1000:1000`, overridable via `AOOSTAR_UID` / `AOOSTAR_GID`) without rewriting already-compliant files, then drop privileges to non-root `1000:1000` before launching Node.
 - Updated `Dockerfile` to install `gosu` and configure `/usr/local/bin/docker-entrypoint.sh` as `ENTRYPOINT` while keeping `CMD ["node", "dist-server/server.mjs"]` running non-root.
 - Updated `templates/aoostar-display-studio.xml` and exported Unraid XML/Compose definitions to include `--device=/dev/ttyACM0:/dev/ttyACM0 --group-add=20` in `<ExtraParams>` (granting Unraid `dialout` group GID 20 access cleanly without duplicate `<Config Type="Device">` mappings).
+- Fixed Linux/Docker sysfs USB VID/PID resolution in `readUsbAttrsForTty` (`src/server/aoostar/serial.ts`) so `fs.realpathSync` resolves `/sys/class/tty/<tty>/device` and `/sys/dev/char/<major>:<minor>` symlinks before walking parent directories, with `uevent` `PRODUCT=` and `/sys/bus/usb/devices` fallbacks instead of lexically collapsing `device/..` before kernel lookup.
 
 ### Authentication & Security UX
 - Replaced first-run `.auth-token` login modal with username/password authentication (`admin / admin` default on first run, stored as salted `scrypt` hashes in `data/credentials.json` mode `0600`, or overridden via `AOOSTAR_ADMIN_USER` / `AOOSTAR_ADMIN_PASSWORD`).
