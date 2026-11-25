@@ -666,3 +666,76 @@ test('auth hardening: rate limiting + identical login errors + public-IP default
     }
   });
 });
+
+test('auth preview proxy: DISABLE_HMR=true allows default login behind local nginx and issues SameSite=None Secure Partitioned cookie', async () => {
+  await withSavedAuthEnv(async () => {
+    process.env.DISABLE_HMR = 'true';
+    process.env.AOOSTAR_TRUST_PROXY = 'false';
+
+    const {createStudioApp} = await import('../server.ts');
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'aoostar-auth-hmr-'));
+    const ctx = createStudioApp({dataDir: tmpDir, bindHost: '0.0.0.0', port: 0});
+    const server = http.createServer(ctx.app);
+
+    try {
+      await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+      const port = (server.address() as AddressInfo).port;
+      const previewHost = 'ais-dev-example.asia-southeast1.run.app';
+      const previewOrigin = `https://${previewHost}`;
+
+      const statusRes = await httpRequest({
+        port,
+        method: 'GET',
+        path: '/api/auth/status',
+        headers: {
+          Host: `localhost:${port}`,
+          'X-Forwarded-Host': previewHost,
+          'X-Forwarded-For': '203.0.113.10',
+          'X-Forwarded-Proto': 'http',
+        },
+      });
+      assert.equal(statusRes.status, 200);
+      const st = JSON.parse(statusRes.body) as {defaultPasswordPublicBlocked: boolean};
+      assert.equal(st.defaultPasswordPublicBlocked, false);
+
+      const loginRes = await httpRequest({
+        port,
+        method: 'POST',
+        path: '/api/auth/login',
+        headers: {
+          Host: `localhost:${port}`,
+          'X-Forwarded-Host': previewHost,
+          'X-Forwarded-For': '203.0.113.10',
+          'X-Forwarded-Proto': 'http',
+          Origin: previewOrigin,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({username: 'admin', password: 'admin'}),
+      });
+      assert.equal(loginRes.status, 200);
+      const setCookie = loginRes.headers['set-cookie']?.[0] || '';
+      assert.match(setCookie, /HttpOnly/i);
+      assert.match(setCookie, /SameSite=None/i);
+      assert.match(setCookie, /Secure/i);
+      assert.match(setCookie, /Partitioned/i);
+
+      const cookie = setCookie.split(';')[0];
+      const cfgRes = await httpRequest({
+        port,
+        method: 'GET',
+        path: '/api/config',
+        headers: {
+          Host: `localhost:${port}`,
+          'X-Forwarded-Host': previewHost,
+          Cookie: cookie,
+        },
+      });
+      assert.equal(cfgRes.status, 200);
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+      await ctx.shutdown();
+      fs.rmSync(tmpDir, {recursive: true, force: true});
+    }
+  });
+});
+

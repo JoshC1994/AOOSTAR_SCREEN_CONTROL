@@ -6655,7 +6655,7 @@ function verifySecretScrypt(provided, salt, expectedHashHex) {
   }
 }
 function isTrustedProxyEnabled() {
-  return process.env.AOOSTAR_TRUST_PROXY === "true" || process.env.DISABLE_HMR === "true";
+  return process.env.AOOSTAR_TRUST_PROXY === "true";
 }
 function normalizeIp(rawIp) {
   if (!rawIp || typeof rawIp !== "string") return "";
@@ -6976,8 +6976,13 @@ function isDefaultPasswordPublicBlocked(req, store) {
   return !isLocalPrivateClientIp(clientIp);
 }
 function buildSessionCookieHeader(req, cookieValue, maxAgeSec = 7 * 24 * 60 * 60) {
-  const isIframeHttps = process.env.DISABLE_HMR === "true" && req.secure;
-  const trustProxyHttps = isTrustedProxyEnabled() && String(req.headers["x-forwarded-proto"] || "").split(",")[0].trim().toLowerCase() === "https";
+  const forwardedProtoHttps = String(req.headers["x-forwarded-proto"] || "").split(",")[0].trim().toLowerCase() === "https";
+  const originHeader = String(req.headers.origin || "").toLowerCase();
+  const refererHeader = String(req.headers.referer || "").toLowerCase();
+  const isIframeHttps = process.env.DISABLE_HMR === "true" && Boolean(
+    req.secure || forwardedProtoHttps || originHeader.startsWith("https://") || refererHeader.startsWith("https://")
+  );
+  const trustProxyHttps = isTrustedProxyEnabled() && forwardedProtoHttps;
   const isSecure = Boolean(req.secure || trustProxyHttps || isIframeHttps);
   const parts = [
     `aoostar_session=${encodeURIComponent(cookieValue)}`,

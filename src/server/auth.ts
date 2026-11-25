@@ -49,7 +49,7 @@ export function verifySecretScrypt(provided: string, salt: string, expectedHashH
 }
 
 export function isTrustedProxyEnabled(): boolean {
-  return process.env.AOOSTAR_TRUST_PROXY === 'true' || process.env.DISABLE_HMR === 'true';
+  return process.env.AOOSTAR_TRUST_PROXY === 'true';
 }
 
 export function normalizeIp(rawIp: string | undefined | null): string {
@@ -65,8 +65,8 @@ export function normalizeIp(rawIp: string | undefined | null): string {
 
 /**
  * Resolves the effective client IP.
- * Strictly ignores X-Forwarded-For unless AOOSTAR_TRUST_PROXY=true (or preview DISABLE_HMR=true),
- * preventing spoofed header bypasses of rate limits and default-password exposure rules.
+ * Strictly ignores X-Forwarded-For unless AOOSTAR_TRUST_PROXY=true,
+ * preventing spoofed header bypasses and allowing AI Studio preview traffic through local proxy.
  */
 export function resolveClientIp(req: Request): string {
   const socketIp = normalizeIp(req.socket?.remoteAddress);
@@ -466,13 +466,22 @@ export function buildSessionCookieHeader(
   cookieValue: string,
   maxAgeSec = 7 * 24 * 60 * 60
 ): string {
-  const isIframeHttps = process.env.DISABLE_HMR === 'true' && req.secure;
-  const trustProxyHttps =
-    isTrustedProxyEnabled() &&
+  const forwardedProtoHttps =
     String(req.headers['x-forwarded-proto'] || '')
       .split(',')[0]
       .trim()
       .toLowerCase() === 'https';
+  const originHeader = String(req.headers.origin || '').toLowerCase();
+  const refererHeader = String(req.headers.referer || '').toLowerCase();
+  const isIframeHttps =
+    process.env.DISABLE_HMR === 'true' &&
+    Boolean(
+      req.secure ||
+        forwardedProtoHttps ||
+        originHeader.startsWith('https://') ||
+        refererHeader.startsWith('https://')
+    );
+  const trustProxyHttps = isTrustedProxyEnabled() && forwardedProtoHttps;
   const isSecure = Boolean(req.secure || trustProxyHttps || isIframeHttps);
 
   const parts = [
