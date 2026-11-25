@@ -31,19 +31,23 @@ Container Image: `ghcr.io/joshc1994/aoostar_screen_control:latest`
    - **Repository**: `ghcr.io/joshc1994/aoostar_screen_control:latest`
    - **WebUI Port**: `3000` -> `3000`
    - **Appdata**: `/mnt/user/appdata/aoostar-display-studio` -> `/app/data`
-   - **Device**: `--device=/dev/ttyACM0:/dev/ttyACM0` (or `/dev/aoostar_lcd`)
+   - **Extra Parameters (included automatically by the template)**: `--device=/dev/ttyACM0:/dev/ttyACM0 --group-add=20` (passes the LCD device and Unraid `dialout` group GID `20` without duplicating device flags; adjust `--group-add` only if your host uses a different `dialout` GID, e.g. `stat -c '%g' /dev/ttyACM0`)
    - **Mounts**:
      - `/var/local/emhttp` -> `/var/local/emhttp` (`ro`)
      - `/sys/class/hwmon` -> `/sys/class/hwmon` (`ro`)
      - `/var/run/docker.sock` -> `/var/run/docker.sock` (`ro`, optional; see Docker Socket Proxy below)
-2. First-run login & account recovery:
+2. Automatic permissions & non-root runtime:
+   - On startup, `docker-entrypoint.sh` starts briefly as `root`, automatically creates/repairs ownership of `/app/data` and `/app/data/uploads` when needed (logging a concise warning only when mismatched ownership is repaired), and immediately drops privileges via `gosu` before launching Node as UID/GID `1000:1000` (`node`).
+   - You do **not** need to run manual `chown -R 1000:1000 /mnt/user/appdata/aoostar-display-studio` commands or add `--user=1000:1000` in Extra Parameters.
+   - To override the runtime UID/GID if needed (e.g., to match `nobody:users` `99:100`), set the optional **Advanced** template variables `AOOSTAR_UID` and `AOOSTAR_GID` (defaults are `1000` and `1000`; `0` is rejected).
+3. First-run login & account recovery:
    - Open `http://<SERVER-IP>:3000` and sign in with default credentials **`admin` / `admin`** (non-blocking prompts encourage changing them in **Settings > Security**).
    - While the default password is active, logins from outside local private networks (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, loopback, `fc00::/7`) are blocked unless `AOOSTAR_ALLOW_DEFAULT_PASSWORD_PUBLIC=true` or you change the password.
    - To preset credentials declaratively, set `AOOSTAR_ADMIN_USER` and `AOOSTAR_ADMIN_PASSWORD` environment variables.
    - **Account Recovery**: If you forget your password, delete `/mnt/user/appdata/aoostar-display-studio/credentials.json` and restart the container to restore `admin / admin` without losing saved screens, connections, or uploaded media.
-3. Validate safely before enabling hardware writes:
-   - Open **Diagnostics** and run **Dry run** and **Test asterctl**.
-   - Once verified, set `AOOSTAR_ENABLE_SERIAL_WRITES=true` or unlock writes in **Settings**.
+4. Validate safely before enabling hardware writes:
+   - Keep `AOOSTAR_ENABLE_SERIAL_WRITES=false` initially, open **Diagnostics**, and run **Dry run** first to validate packet framing safely.
+   - Only after validating Dry Run, set `AOOSTAR_ENABLE_SERIAL_WRITES=true` or unlock serial writes in **Settings**.
 
 ---
 

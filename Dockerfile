@@ -9,7 +9,7 @@ RUN npm ci
 COPY . .
 RUN npm run build && npm prune --omit=dev
 
-# Stage 2: Minimal production non-root runtime (native Node async USB-UART serial transport)
+# Stage 2: Minimal production runtime (repairs /app/data ownership at start, then drops to UID/GID 1000 via gosu)
 FROM node:22-bookworm-slim
 
 WORKDIR /app
@@ -19,6 +19,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     coreutils \
     curl \
     fonts-dejavu-core \
+    gosu \
     lm-sensors \
     libudev1 \
     udev \
@@ -36,8 +37,10 @@ COPY --from=app-builder /app/dist ./dist
 COPY --from=app-builder /app/dist-server ./dist-server
 COPY --from=app-builder /app/index.html ./index.html
 COPY --from=app-builder /app/metadata.json ./metadata.json
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 
-RUN mkdir -p /app/data/uploads && \
+RUN chmod 0755 /usr/local/bin/docker-entrypoint.sh && \
+    mkdir -p /app/data/uploads && \
     chown -R node:node /app /app/data
 
 ENV NODE_ENV=production
@@ -49,10 +52,9 @@ EXPOSE 3000
 
 VOLUME ["/app/data"]
 
-USER node
-
 # Safe read-only health check: never touches or writes to /dev/ttyACM0
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
   CMD curl -fsS "http://127.0.0.1:${PORT:-3000}/api/info" >/dev/null || exit 1
 
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 CMD ["node", "dist-server/server.mjs"]

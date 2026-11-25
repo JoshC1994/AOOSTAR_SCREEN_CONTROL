@@ -15,7 +15,7 @@
   <WebUI>http://[IP]:[PORT:3000]/</WebUI>
   <TemplateURL>https://raw.githubusercontent.com/JoshC1994/AOOSTAR_SCREEN_CONTROL/main/templates/aoostar-display-studio.xml</TemplateURL>
   <Icon>https://raw.githubusercontent.com/JoshC1994/AOOSTAR_SCREEN_CONTROL/main/icon.svg</Icon>
-  <ExtraParams>--device=/dev/ttyACM0:/dev/ttyACM0</ExtraParams>
+  <ExtraParams>--device=/dev/ttyACM0:/dev/ttyACM0 --group-add=20</ExtraParams>
   <PostArgs/>
   <CPUset/>
   <DateInstalled/>
@@ -23,12 +23,13 @@
   <DonateLink/>
   <Requires>Aoostar secondary USB-UART display (/dev/ttyACM0, VID 0x0416 PID 0x90A1). Works standalone in preview mode even if no display is attached.</Requires>
   <Config Name="WebUI Port" Target="3000" Default="3000" Mode="tcp" Description="Web interface port for Aoostar Display Studio" Type="Port" Display="always" Required="true" Mask="false">3000</Config>
-  <Config Name="Config &amp; Custom Media" Target="/app/data" Default="/mnt/user/appdata/aoostar-display-studio" Mode="rw" Description="Persistent configuration (0600), hashed credentials (credentials.json), saved screens, and uploaded media" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/aoostar-display-studio</Config>
+  <Config Name="Config &amp; Custom Media" Target="/app/data" Default="/mnt/user/appdata/aoostar-display-studio" Mode="rw" Description="Persistent configuration (0600), hashed credentials (credentials.json), saved screens, and uploaded media (ownership automatically repaired on startup)" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/aoostar-display-studio</Config>
   <Config Name="Docker Socket" Target="/var/run/docker.sock" Default="/var/run/docker.sock" Mode="ro" Description="Read-only Docker socket (or point DOCKER_HOST at a socket proxy)" Type="Path" Display="always" Required="false" Mask="false">/var/run/docker.sock</Config>
   <Config Name="Unraid emhttp State" Target="/var/local/emhttp" Default="/var/local/emhttp" Mode="ro" Description="Read-only Unraid array, disk, and user state" Type="Path" Display="always" Required="false" Mask="false">/var/local/emhttp</Config>
   <Config Name="Hardware Sensors (hwmon)" Target="/sys/class/hwmon" Default="/sys/class/hwmon" Mode="ro" Description="Read-only Linux thermal and fan sensor paths" Type="Path" Display="advanced" Required="false" Mask="false">/sys/class/hwmon</Config>
-  <Config Name="USB LCD Device" Target="/dev/ttyACM0" Default="/dev/ttyACM0" Mode="rw" Description="Aoostar USB-UART secondary LCD device (0416:90a1)" Type="Device" Display="always" Required="false" Mask="false">/dev/ttyACM0</Config>
   <Config Name="Enable Serial Writes" Target="AOOSTAR_ENABLE_SERIAL_WRITES" Default="false" Mode="" Description="Safety gate: set to true only after validating Dry Run on the Diagnostics tab" Type="Variable" Display="always" Required="false" Mask="false">false</Config>
+  <Config Name="Runtime UID (Optional)" Target="AOOSTAR_UID" Default="1000" Mode="" Description="Non-root UID for the Node process after /app/data ownership repair (default 1000)" Type="Variable" Display="advanced" Required="false" Mask="false">1000</Config>
+  <Config Name="Runtime GID (Optional)" Target="AOOSTAR_GID" Default="1000" Mode="" Description="Non-root GID for the Node process after /app/data ownership repair (default 1000)" Type="Variable" Display="advanced" Required="false" Mask="false">1000</Config>
   <Config Name="Admin Username (Optional Override)" Target="AOOSTAR_ADMIN_USER" Default="" Mode="" Description="Optional static login username (defaults to admin when AOOSTAR_ADMIN_PASSWORD is unset)" Type="Variable" Display="advanced" Required="false" Mask="false"/>
   <Config Name="Admin Password (Optional Override)" Target="AOOSTAR_ADMIN_PASSWORD" Default="" Mode="" Description="Optional static login password overriding data/credentials.json and disabling the default admin/admin credentials" Type="Variable" Display="advanced" Required="false" Mask="true"/>
   <Config Name="API Token for Scripts (Optional)" Target="AOOSTAR_API_TOKEN" Default="" Mode="" Description="Optional Bearer token for automation scripts (also creatable/rotatable in Settings &gt; Security)" Type="Variable" Display="advanced" Required="false" Mask="true"/>

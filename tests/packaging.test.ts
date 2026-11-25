@@ -13,9 +13,18 @@ test('packaging & policy checks: Docker-only Unraid deployment, Node-only image 
   const dockerfile = fs.readFileSync(path.join(root, 'Dockerfile'), 'utf8');
   assert.equal(/asterctl-builder|rust:|cargo build|git clone/i.test(dockerfile), false);
   assert.match(dockerfile, /fonts-dejavu-core/);
+  assert.match(dockerfile, /\bgosu\b/);
+  assert.match(dockerfile, /COPY docker-entrypoint\.sh \/usr\/local\/bin\/docker-entrypoint\.sh/);
+  assert.match(dockerfile, /ENTRYPOINT \["\/usr\/local\/bin\/docker-entrypoint\.sh"\]/);
   assert.match(dockerfile, /AOOSTAR_BIND=0\.0\.0\.0/);
-  assert.match(dockerfile, /USER node/);
+  assert.equal(/^USER\s+node\b/m.test(dockerfile), false);
   assert.match(dockerfile, /CMD \["node", "dist-server\/server\.mjs"\]/);
+
+  const entrypoint = fs.readFileSync(path.join(root, 'docker-entrypoint.sh'), 'utf8');
+  assert.match(entrypoint, /AOOSTAR_UID:-.*1000/);
+  assert.match(entrypoint, /AOOSTAR_GID:-.*1000/);
+  assert.match(entrypoint, /exec gosu /);
+  assert.match(entrypoint, /\/app\/data/);
 
   const asterctlSrc = fs.readFileSync(path.join(root, 'src', 'server', 'aoostar', 'asterctl.ts'), 'utf8');
   for (const removedSymbol of [
@@ -34,6 +43,10 @@ test('packaging & policy checks: Docker-only Unraid deployment, Node-only image 
   const templateXml = fs.readFileSync(path.join(root, 'templates', 'aoostar-display-studio.xml'), 'utf8');
   assert.match(templateXml, /JoshC1994\/AOOSTAR_SCREEN_CONTROL/);
   assert.match(templateXml, /ghcr\.io\/joshc1994\/aoostar_screen_control:latest/);
+  assert.match(templateXml, /<ExtraParams>--device=\/dev\/ttyACM0:\/dev\/ttyACM0 --group-add=20<\/ExtraParams>/);
+  assert.equal(templateXml.includes('Type="Device"'), false);
+  assert.match(templateXml, /AOOSTAR_UID/);
+  assert.match(templateXml, /AOOSTAR_GID/);
   assert.match(templateXml, /AOOSTAR_API_TOKEN/);
   assert.match(templateXml, /AOOSTAR_ALLOWED_HOSTS/);
   assert.match(templateXml, /AOOSTAR_TRUST_PROXY/);
