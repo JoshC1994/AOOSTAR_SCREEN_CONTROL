@@ -51,11 +51,17 @@ if ! chmod u+rwx "$DATA_DIR" "$UPLOADS_DIR"; then
   exit 1
 fi
 
-# Preserve supplementary groups passed by Docker (e.g. --group-add=20 for dialout) when dropping privileges via gosu.
+# Preserve supplementary groups passed by Docker (e.g. --group-add=20) and host serial device GIDs when dropping privileges via gosu.
 EXTRA_GIDS="$(id -G)"
-TARGET_USER="node"
+TARGET_USER=""
 
-if [[ "$TARGET_UID" -ne 1000 ]] || [[ "$TARGET_GID" -ne 1000 ]]; then
+if [[ "$TARGET_UID" -eq 1000 ]] && [[ "$TARGET_GID" -eq 1000 ]]; then
+  if getent passwd node >/dev/null 2>&1; then
+    TARGET_USER="node"
+  fi
+fi
+
+if [[ -z "$TARGET_USER" ]]; then
   EXISTING_GROUP="$(getent group "$TARGET_GID" | cut -d: -f1 || true)"
   if [[ -z "$EXISTING_GROUP" ]]; then
     groupadd -g "$TARGET_GID" aoostar >/dev/null 2>&1 || true
@@ -71,22 +77,63 @@ if [[ "$TARGET_UID" -ne 1000 ]] || [[ "$TARGET_GID" -ne 1000 ]]; then
   fi
 fi
 
-if getent passwd "$TARGET_USER" >/dev/null 2>&1; then
+add_supplementary_gid() {
+  local gid="$1"
+  if [[ -z "$TARGET_USER" ]] || ! [[ "$gid" =~ ^[0-9]+$ ]]; then
+    return 0
+  fi
+  if [[ "$gid" -eq 0 ]] || [[ "$gid" -eq "$TARGET_GID" ]]; then
+    return 0
+  fi
+  local grp_name
+  grp_name="$(getent group "$gid" | cut -d: -f1 || true)"
+  if [[ -z "$grp_name" ]]; then
+    grp_name="aoostar_grp_${gid}"
+    groupadd -g "$gid" "$grp_name" >/dev/null 2>&1 || true
+    grp_name="$(getent group "$gid" | cut -d: -f1 || true)"
+  fi
+  if [[ -n "$grp_name" ]]; then
+    usermod -a -G "$grp_name" "$TARGET_USER" >/dev/null 2>&1 || true
+  fi
+}
+
+SERIAL_DEVS=()
+for dev in /dev/aoostar_lcd /dev/ttyACM* /dev/ttyUSB*; do
+  if [[ -e "$dev" ]]; then
+    real_dev="$(readlink -f "$dev" 2>/dev/null || echo "$dev")"
+    if [[ -c "$real_dev" ]]; then
+      SERIAL_DEVS+=("$real_dev")
+    fi
+  fi
+done
+
+if [[ -n "$TARGET_USER" ]] && getent passwd "$TARGET_USER" >/dev/null 2>&1; then
   for gid in $EXTRA_GIDS; do
-    if [[ "$gid" -eq 0 ]] || [[ "$gid" -eq "$TARGET_GID" ]]; then
-      continue
-    fi
-    GRP_NAME="$(getent group "$gid" | cut -d: -f1 || true)"
-    if [[ -z "$GRP_NAME" ]]; then
-      GRP_NAME="aoostar_grp_${gid}"
-      groupadd -g "$gid" "$GRP_NAME" >/dev/null 2>&1 || true
-    fi
-    usermod -a -G "$GRP_NAME" "$TARGET_USER" >/dev/null 2>&1 || true
+    add_supplementary_gid "$gid"
   done
   usermod -a -G dialout "$TARGET_USER" >/dev/null 2>&1 || true
+  if [[ ${#SERIAL_DEVS[@]} -gt 0 ]]; then
+    for real_dev in "${SERIAL_DEVS[@]}"; do
+      dev_gid="$(stat -c '%g' "$real_dev" 2>/dev/null || true)"
+      add_supplementary_gid "$dev_gid"
+    done
+  fi
   GOSU_SPEC="$TARGET_USER"
 else
   GOSU_SPEC="${TARGET_UID}:${TARGET_GID}"
+fi
+
+if [[ ${#SERIAL_DEVS[@]} -gt 0 ]]; then
+  for real_dev in "${SERIAL_DEVS[@]}"; do
+    if ! gosu "$GOSU_SPEC" test -r "$real_dev" || ! gosu "$GOSU_SPEC" test -w "$real_dev"; then
+      echo "[aoostar-entrypoint] WARNING: Adjusting container serial device ${real_dev} group/mode for UID/GID ${TARGET_UID}:${TARGET_GID} access" >&2
+      chgrp "$TARGET_GID" "$real_dev" 2>/dev/null || true
+      chmod g+rw "$real_dev" 2>/dev/null || true
+      if ! gosu "$GOSU_SPEC" test -r "$real_dev" || ! gosu "$GOSU_SPEC" test -w "$real_dev"; then
+        echo "[aoostar-entrypoint] WARNING: Serial device ${real_dev} is still not R/W for ${GOSU_SPEC}; serial writes may fail." >&2
+      fi
+    fi
+  done
 fi
 
 if ! gosu "$GOSU_SPEC" test -w "$DATA_DIR" || ! gosu "$GOSU_SPEC" test -w "$UPLOADS_DIR"; then

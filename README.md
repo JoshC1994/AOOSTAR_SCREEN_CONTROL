@@ -37,7 +37,7 @@ Container Image: `ghcr.io/joshc1994/aoostar_screen_control:latest`
      - `/sys/class/hwmon` -> `/sys/class/hwmon` (`ro`)
      - `/var/run/docker.sock` -> `/var/run/docker.sock` (`ro`, optional; see Docker Socket Proxy below)
 2. Automatic permissions & non-root runtime:
-   - On startup, `docker-entrypoint.sh` starts briefly as `root`, automatically creates/repairs ownership of `/app/data` and `/app/data/uploads` when needed (logging a concise warning only when mismatched ownership is repaired), and immediately drops privileges via `gosu` before launching Node as UID/GID `1000:1000` (`node`).
+   - On startup, `docker-entrypoint.sh` starts briefly as `root`, automatically creates/repairs ownership of `/app/data` and `/app/data/uploads` when needed, grants the non-root runtime user supplementary access to whatever host GID owns `/dev/ttyACM*` / `/dev/ttyUSB*` / `/dev/aoostar_lcd` (e.g. Unraid/Slackware `dialout` GID `16`, `uucp` GID `14`, or Debian `dialout` GID `20`), adjusts container-local device permissions if still inaccessible, and immediately drops privileges via `gosu` before launching Node as UID/GID `1000:1000` (`node`).
    - You do **not** need to run manual `chown -R 1000:1000 /mnt/user/appdata/aoostar-display-studio` commands or add `--user=1000:1000` in Extra Parameters.
    - To override the runtime UID/GID if needed (e.g., to match `nobody:users` `99:100`), set the optional **Advanced** template variables `AOOSTAR_UID` and `AOOSTAR_GID` (defaults are `1000` and `1000`; `0` is rejected).
 3. First-run login & account recovery:

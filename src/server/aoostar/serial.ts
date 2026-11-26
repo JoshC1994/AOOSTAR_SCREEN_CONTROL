@@ -782,6 +782,28 @@ function buildSttyArgs(devicePath: string): string[] {
   ];
 }
 
+function assertSerialDeviceRwAccess(realPath: string): void {
+  try {
+    fs.accessSync(realPath, fs.constants.R_OK | fs.constants.W_OK);
+  } catch (err) {
+    let detail = '';
+    try {
+      const st = fs.statSync(realPath);
+      const modeOctal = `0${(st.mode & 0o777).toString(8)}`;
+      const procUid = typeof process.getuid === 'function' ? process.getuid() : '?';
+      const procGid = typeof process.getgid === 'function' ? process.getgid() : '?';
+      const procGroups = typeof process.getgroups === 'function' ? process.getgroups().join(',') : '';
+      detail = ` (device owner=${st.uid}:${st.gid} mode=${modeOctal}; process uid=${procUid} gid=${procGid} groups=[${procGroups}])`;
+    } catch {
+      // ignore stat failure
+    }
+    const baseMsg = err instanceof Error ? err.message : String(err);
+    throw new Error(
+      `Permission denied accessing ${realPath}${detail}. Ensure the container runs via docker-entrypoint.sh or passes --group-add=<host_device_gid>. (${baseMsg})`
+    );
+  }
+}
+
 export class LinuxSerialFdTransport implements SerialPortTransport {
   private fd: number | null;
   private readonly devicePath: string;
@@ -789,6 +811,7 @@ export class LinuxSerialFdTransport implements SerialPortTransport {
 
   constructor(devicePath: string) {
     this.devicePath = fs.realpathSync(devicePath);
+    assertSerialDeviceRwAccess(this.devicePath);
 
     try {
       execFileSync('stty', buildSttyArgs(this.devicePath), {stdio: 'pipe', timeout: 2000});
@@ -906,6 +929,7 @@ export class LinuxAsyncSerialTransport implements AsyncSerialPortTransport {
 
   static async open(devicePath: string): Promise<LinuxAsyncSerialTransport> {
     const realPath = await fsp.realpath(devicePath);
+    assertSerialDeviceRwAccess(realPath);
     try {
       await execFileAsync('stty', buildSttyArgs(realPath), {timeout: 2000});
     } catch (err) {

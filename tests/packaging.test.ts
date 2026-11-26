@@ -25,6 +25,8 @@ test('packaging & policy checks: Docker-only Unraid deployment, Node-only image 
   assert.match(entrypoint, /AOOSTAR_GID:-.*1000/);
   assert.match(entrypoint, /exec gosu /);
   assert.match(entrypoint, /\/app\/data/);
+  assert.match(entrypoint, /\/dev\/ttyACM\*/);
+  assert.match(entrypoint, /add_supplementary_gid/);
 
   const asterctlSrc = fs.readFileSync(path.join(root, 'src', 'server', 'aoostar', 'asterctl.ts'), 'utf8');
   for (const removedSymbol of [
