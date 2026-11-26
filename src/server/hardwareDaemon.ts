@@ -137,7 +137,12 @@ export async function runHardwareDaemonTick(
   const current = playlist[idx];
 
   let screenChanged = false;
-  if (!overrideRgbaBase64 && playlist.length > 1 && nowMs - lastRotationSwitchMs >= current.durationSec * 1000) {
+  if (
+    !overrideRgbaBase64 &&
+    cfg.rotationEnabled !== false &&
+    playlist.length > 1 &&
+    nowMs - lastRotationSwitchMs >= current.durationSec * 1000
+  ) {
     idx = (idx + 1) % playlist.length;
     lastRotationSwitchMs = nowMs;
     screenChanged = true;
@@ -279,10 +284,13 @@ export async function runHardwareDaemonTick(
   });
   prevEffectiveBrightness = effectiveBrightness;
 
+  const nextDaemonState: DaemonLifecycleState =
+    sessionPushArmed && cfg.hardware.autoPushEnabled !== false ? 'active' : 'idle';
+
   consecutiveErrors = 0;
   runtimeState.consecutiveErrors = 0;
   runtimeState.lastError = null;
-  runtimeState.daemonState = 'active';
+  runtimeState.daemonState = nextDaemonState;
   runtimeState.activeIndex = idx;
   runtimeState.lastTickAt = new Date().toISOString();
   runtimeState.currentScreenId = activeScreen.id;
@@ -297,7 +305,7 @@ export async function runHardwareDaemonTick(
     currentScreenName: activeScreen.name,
     isSleeping: sleeping,
     effectiveBrightness,
-    daemonState: 'active',
+    daemonState: nextDaemonState,
     lastError: null,
   });
 

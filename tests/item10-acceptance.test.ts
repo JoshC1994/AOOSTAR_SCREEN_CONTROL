@@ -30,6 +30,7 @@ import {
   resetDaemonRotation,
   runHardwareDaemonTick,
   turnDisplayOffManual,
+  turnDisplayOnManual,
 } from '../src/server/hardwareDaemon.ts';
 import {buildExposedEntities} from '../src/server/telemetry.ts';
 import type {LcdScreen, StudioConfig, TelemetrySnapshot} from '../src/types.ts';
@@ -488,11 +489,28 @@ test('Item 10 + 10d + 18: daemon rotates per-screen dwell times (1s vs 3s) and h
     const m3 = await runHardwareDaemonTick(() => cfg, undefined, undefined, {now: new Date(t0 + 4200)});
     assert.equal(m3?.screenId, 'screen-1s');
 
+    // When rotationEnabled is false, daemon stays pinned on current screen even past durationSec
+    const pinnedCfg: StudioConfig = {
+      ...cfg,
+      rotationEnabled: false,
+    };
+    const m4 = await runHardwareDaemonTick(() => pinnedCfg, undefined, undefined, {now: new Date(t0 + 12_000)});
+    assert.equal(m4?.screenId, 'screen-1s');
+
     // Item 18: Manual off sends DISPLAY_OFF directly via Node transport with asterctl absent
     const offMeta = await turnDisplayOffManual(() => cfg);
     assert.equal(offMeta.powerState, 'off');
     await waitForCondition(() => readState(emu.stateFile).display_off_count >= 1);
     assert.ok(readState(emu.stateFile).display_off_count >= 1);
+
+    // Manual On sends DISPLAY_ON and pushes active screen full frame
+    const framesBeforeOn = readState(emu.stateFile).frames.length;
+    const onMeta = await turnDisplayOnManual(() => cfg);
+    assert.equal(onMeta.powerState, 'on');
+    await waitForCondition(() => readState(emu.stateFile).frames.length > framesBeforeOn);
+    const finalState = readState(emu.stateFile);
+    assert.ok(finalState.display_on_count >= 1);
+    assert.equal(finalState.unknown_bytes, 0);
   } finally {
     await closeActiveSerialTransportAsync();
     clearEmergencyStop();
@@ -503,6 +521,130 @@ test('Item 10 + 10d + 18: daemon rotates per-screen dwell times (1s vs 3s) and h
     if (prevBin === undefined) delete process.env.AOOSTAR_ASTERCTL_BIN;
     else process.env.AOOSTAR_ASTERCTL_BIN = prevBin;
     detectAsterctlBinary(true);
+    await emu.stop();
+  }
+});
+
+test('POST /api/config autoPushEnabled=true and POST /api/hardware/deploy arm daemon and push live screen over PTY', async (t) => {
+  if (!hasPython3()) {
+    t.skip('python3 not installed');
+    return;
+  }
+
+  const prevNoAutostart = process.env.AOOSTAR_NO_AUTOSTART;
+  const prevApiToken = process.env.AOOSTAR_API_TOKEN;
+  const prevSerialEnv = process.env.AOOSTAR_ENABLE_SERIAL_WRITES;
+  const prevPtyEnv = process.env.AOOSTAR_TEST_PTY_PATH;
+  const apiToken = 'test-auto-push-token-123456';
+
+  process.env.AOOSTAR_NO_AUTOSTART = 'true';
+  process.env.AOOSTAR_API_TOKEN = apiToken;
+
+  const http = await import('node:http');
+  const {createStudioApp} = await import('../server.ts');
+
+  const emu = await startPtyEmulator();
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'aoostar-auto-push-'));
+
+  process.env.AOOSTAR_ENABLE_SERIAL_WRITES = 'true';
+  process.env.AOOSTAR_TEST_PTY_PATH = emu.slavePath;
+  clearEmergencyStop();
+  await closeActiveSerialTransportAsync();
+  resetFrameDiffCache();
+  resetDaemonBackoff();
+
+  const ctx = createStudioApp({dataDir, bindHost: '127.0.0.1', port: 0});
+  const server = http.createServer(ctx.app);
+
+  const reqJson = (port: number, method: string, reqPath: string, body?: unknown) =>
+    new Promise<{status: number; body: string}>((resolve, reject) => {
+      const payload = body !== undefined ? JSON.stringify(body) : undefined;
+      const req = http.request(
+        {
+          hostname: '127.0.0.1',
+          port,
+          method,
+          path: reqPath,
+          headers: {
+            Host: `127.0.0.1:${port}`,
+            Authorization: `Bearer ${apiToken}`,
+            Connection: 'close',
+            ...(payload ? {'Content-Type': 'application/json'} : {}),
+          },
+        },
+        (res) => {
+          const chunks: Buffer[] = [];
+          res.on('data', (c: Buffer) => chunks.push(c));
+          res.on('end', () => resolve({status: res.statusCode ?? 0, body: Buffer.concat(chunks).toString('utf8')}));
+        }
+      );
+      req.on('error', reject);
+      if (payload) req.write(payload);
+      req.end();
+    });
+
+  try {
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const addr = server.address();
+    assert.ok(addr && typeof addr !== 'string');
+    const port = addr.port;
+
+    // 1. Ticking autoPushEnabled=true in Settings POSTs config -> arms session push & triggers immediate frame
+    const enableRes = await reqJson(port, 'POST', '/api/config', {
+      hardware: {
+        devicePath: emu.slavePath,
+        autoPushEnabled: true,
+        sleepScheduleEnabled: false,
+      },
+    });
+    assert.equal(enableRes.status, 200);
+    await waitForCondition(() => readState(emu.stateFile).frames.length >= 1, 5000);
+
+    const diag1 = await reqJson(port, 'GET', '/api/diagnostics');
+    assert.equal(diag1.status, 200);
+    const diag1Json = JSON.parse(diag1.body) as {sessionPushArmed: boolean; daemonState: string};
+    assert.equal(diag1Json.sessionPushArmed, true);
+    assert.equal(diag1Json.daemonState, 'active');
+
+    // 2. Unchecking autoPushEnabled=false disarms session push and sets daemonState to idle
+    const disableRes = await reqJson(port, 'POST', '/api/config', {
+      hardware: {autoPushEnabled: false},
+    });
+    assert.equal(disableRes.status, 200);
+    const diag2 = await reqJson(port, 'GET', '/api/diagnostics');
+    const diag2Json = JSON.parse(diag2.body) as {sessionPushArmed: boolean; daemonState: string};
+    assert.equal(diag2Json.sessionPushArmed, false);
+    assert.equal(diag2Json.daemonState, 'idle');
+
+    // 3. Clicking Push to Screen (/api/hardware/deploy) re-enables autoPushEnabled, arms daemon, and pushes frame
+    const framesBeforeDeploy = readState(emu.stateFile).frames.length;
+    const deployRes = await reqJson(port, 'POST', '/api/hardware/deploy', {
+      activeScreenId: ctx.getConfig().screens[0].id,
+    });
+    assert.equal(deployRes.status, 200);
+    const deployJson = JSON.parse(deployRes.body) as {
+      hardware: {autoPushEnabled: boolean};
+      hardwareDeploy: {deployed: boolean; daemonState: string};
+    };
+    assert.equal(deployJson.hardware.autoPushEnabled, true);
+    assert.equal(deployJson.hardwareDeploy.deployed, true);
+    assert.equal(deployJson.hardwareDeploy.daemonState, 'active');
+    await waitForCondition(() => readState(emu.stateFile).frames.length > framesBeforeDeploy, 5000);
+  } finally {
+    server.closeAllConnections?.();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    await ctx.shutdown();
+    await closeActiveSerialTransportAsync();
+    clearEmergencyStop();
+    if (prevNoAutostart === undefined) delete process.env.AOOSTAR_NO_AUTOSTART;
+    else process.env.AOOSTAR_NO_AUTOSTART = prevNoAutostart;
+    if (prevApiToken === undefined) delete process.env.AOOSTAR_API_TOKEN;
+    else process.env.AOOSTAR_API_TOKEN = prevApiToken;
+    if (prevSerialEnv === undefined) delete process.env.AOOSTAR_ENABLE_SERIAL_WRITES;
+    else process.env.AOOSTAR_ENABLE_SERIAL_WRITES = prevSerialEnv;
+    if (prevPtyEnv === undefined) delete process.env.AOOSTAR_TEST_PTY_PATH;
+    else process.env.AOOSTAR_TEST_PTY_PATH = prevPtyEnv;
+    fs.rmSync(dataDir, {recursive: true, force: true});
     await emu.stop();
   }
 });

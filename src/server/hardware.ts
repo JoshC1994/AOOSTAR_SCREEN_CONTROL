@@ -134,7 +134,7 @@ export function buildDiagnosticsSnapshot(
     sessionPushArmed,
     daemonState,
     activeTransport,
-    lastProtocolError: serialDiag.lastProtocolError || asterctl.lastError,
+    lastProtocolError: serialDiag.lastProtocolError || (asterctl.mode === 'absent' ? null : asterctl.lastError),
     lastPacketPreview: serialDiag.lastPacketPreview,
     lastDryRunSummary: serialDiag.lastDryRunSummary,
     lastFrame: lastFrameMeta,

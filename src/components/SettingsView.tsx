@@ -327,6 +327,15 @@ export function SettingsView({
               />
               <span className="text-[11px] text-slate-500">sec</span>
             </div>
+            <div className="mt-1 text-[11px] font-mono text-slate-500 dark:text-slate-400">
+              {!config.hardware.autoPushEnabled
+                ? 'Paused — tick to stream live updates or click Push to Screen'
+                : !serialWritesActive
+                  ? 'Waiting: unlock Serial Writes below to start pushing'
+                  : config.hardwareDeploy?.daemonState === 'sleeping'
+                    ? 'Sleeping (schedule or stopped array)'
+                    : 'Active — streaming live updates to LCD'}
+            </div>
           </div>
         </div>
 

@@ -274,6 +274,79 @@ test('security suite: auth, host header, CSRF origin, secret masking, 0600 file 
     });
     assert.equal(partialSave.status, 200);
     assert.equal(ctx.getConfig().integrations.haToken, 'super-secret-ha-token');
+    assert.equal(ctx.getConfig().rotationEnabled, false);
+
+    // Full StudioConfig payload (including hardwareDeploy) must save cleanly with 200
+    const currentRes = await httpRequest({
+      port,
+      method: 'GET',
+      path: '/api/config',
+      headers: {
+        Host: `127.0.0.1:${port}`,
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    assert.equal(currentRes.status, 200);
+    const fullClientCfg = JSON.parse(currentRes.body) as Record<string, unknown> & {
+      hardware: Record<string, unknown>;
+      hardwareDeploy: Record<string, unknown>;
+    };
+    const fullSaveRes = await httpRequest({
+      port,
+      method: 'POST',
+      path: '/api/config',
+      headers: {
+        Host: `127.0.0.1:${port}`,
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        ...fullClientCfg,
+        rotationEnabled: true,
+        hardware: {
+          ...fullClientCfg.hardware,
+          sleepScheduleEnabled: false,
+          autoPushEnabled: false,
+        },
+        // Stale client hardwareDeploy must not override server state
+        hardwareDeploy: {
+          ...fullClientCfg.hardwareDeploy,
+          deployed: true,
+        },
+      }),
+    });
+    assert.equal(fullSaveRes.status, 200);
+    assert.equal(ctx.getConfig().rotationEnabled, true);
+    assert.equal(ctx.getConfig().hardware.sleepScheduleEnabled, false);
+    assert.equal(ctx.getConfig().hardwareDeploy.deployed, false);
+
+    // Diagnostics should not report absent optional asterctl as a protocol error
+    const prevAsterBin = process.env.AOOSTAR_ASTERCTL_BIN;
+    process.env.AOOSTAR_ASTERCTL_BIN = path.join(tmpDir, 'missing-asterctl');
+    try {
+      const {detectAsterctlBinary} = await import('../src/server/aoostar/asterctl.ts');
+      detectAsterctlBinary(true);
+      const diagRes = await httpRequest({
+        port,
+        method: 'GET',
+        path: '/api/diagnostics',
+        headers: {
+          Host: `127.0.0.1:${port}`,
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      assert.equal(diagRes.status, 200);
+      const diagJson = JSON.parse(diagRes.body) as {
+        lastProtocolError: string | null;
+        asterctl: {mode: string; lastError: string | null};
+      };
+      assert.equal(diagJson.asterctl.mode, 'absent');
+      assert.equal(diagJson.asterctl.lastError, null);
+      assert.equal(diagJson.lastProtocolError, null);
+    } finally {
+      if (prevAsterBin === undefined) delete process.env.AOOSTAR_ASTERCTL_BIN;
+      else process.env.AOOSTAR_ASTERCTL_BIN = prevAsterBin;
+    }
 
     // 7. Strict Zod schema validation
     const unknownKeyRes = await httpRequest({

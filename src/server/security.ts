@@ -648,9 +648,7 @@ export function mergeIncomingConfig(current: StudioConfig, incoming: Partial<Stu
     dockerIcons: incoming.dockerIcons ?? current.dockerIcons,
     savedScreens: Array.isArray(incoming.savedScreens) ? incoming.savedScreens : current.savedScreens,
     customImages: Array.isArray(incoming.customImages) ? incoming.customImages : current.customImages,
-    hardwareDeploy: incoming.hardwareDeploy
-      ? {...current.hardwareDeploy, ...incoming.hardwareDeploy}
-      : current.hardwareDeploy,
+    hardwareDeploy: current.hardwareDeploy,
   };
 }
 
@@ -1130,6 +1128,21 @@ export const ConfigPatchSchema = z.object({
       })
     )
     .max(200)
+    .optional(),
+  hardwareDeploy: z
+    .object({
+      deployed: z.boolean().optional(),
+      deployedAt: z.string().nullable().optional(),
+      activeIndex: z.number().int().min(0).optional(),
+      currentScreenId: z.string().nullable().optional(),
+      currentScreenName: z.string().nullable().optional(),
+      isSleeping: z.boolean().optional(),
+      effectiveBrightness: z.number().optional(),
+      daemonState: z.string().optional(),
+      lastError: z.string().nullable().optional(),
+      screens: z.array(LcdScreenSchema).max(32).optional(),
+    })
+    .passthrough()
     .optional(),
 }).strict();
 

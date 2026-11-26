@@ -5,7 +5,7 @@ import path from 'node:path';
 import {promisify} from 'node:util';
 import type {DetectedUsbDevice} from '../../types.ts';
 import {
-  buildChunkPacketBatch,
+  buildDataChunkPacket,
   buildFramePacketSequence,
   computeDiffChunkIndices,
   DATA_CHUNK_PACKET_SIZE,
@@ -18,6 +18,7 @@ import {
   formatHexPreview,
   HEADER_END,
   HEADER_START,
+  IMG_CHUNK_SIZE,
   INIT_ACK_WAIT_MS,
   parseInitAckResponse,
   rgbaToRgb565Le,
@@ -921,6 +922,7 @@ export class LinuxAsyncSerialTransport implements AsyncSerialPortTransport {
   private handle: fsp.FileHandle | null = null;
   private readonly devicePath: string;
   private pendingReadBuf: Buffer = Buffer.alloc(0);
+  private datasyncUnsupported = false;
 
   private constructor(devicePath: string, handle: fsp.FileHandle) {
     this.devicePath = devicePath;
@@ -961,7 +963,7 @@ export class LinuxAsyncSerialTransport implements AsyncSerialPortTransport {
           if (Date.now() > deadline) {
             throw new Error(`Async serial write timed out after ${offset}/${data.length} bytes`);
           }
-          await sleepAsyncMs(2);
+          await sleepAsyncMs(1);
         }
       } catch (err) {
         const code = (err as NodeJS.ErrnoException)?.code;
@@ -969,7 +971,7 @@ export class LinuxAsyncSerialTransport implements AsyncSerialPortTransport {
           if (Date.now() > deadline) {
             throw new Error(`Async serial write timed out (${code}) after ${offset}/${data.length} bytes`);
           }
-          await sleepAsyncMs(2);
+          await sleepAsyncMs(1);
           continue;
         }
         throw err;
@@ -979,13 +981,16 @@ export class LinuxAsyncSerialTransport implements AsyncSerialPortTransport {
 
   async flush(): Promise<void> {
     if (!this.handle) throw new Error('Async serial port is closed');
+    if (this.datasyncUnsupported) return;
     try {
       await this.handle.datasync();
     } catch (err) {
       const code = (err as NodeJS.ErrnoException)?.code;
-      if (code !== 'EINVAL' && code !== 'ENOTSUP') {
-        throw err;
+      if (code === 'EINVAL' || code === 'ENOTSUP') {
+        this.datasyncUnsupported = true;
+        return;
       }
+      throw err;
     }
   }
 
@@ -1224,8 +1229,9 @@ export function pushFrameViaSerialTransport(params: {
 /**
  * Primary async diff-cached frame writer:
  * Sends DISPLAY_ON + ACK check if needed, diffs against `prevRgb565` (forced full sync every 60 frames
- * or when `forceFullRefresh=true`), batches writes in <=8KB async writes, and yields `unchangedSkipped: true`
- * when 0 chunks changed.
+ * or when `forceFullRefresh=true`), writes ONE 59-byte command per USB write() syscall (the Synwit
+ * 0416:90a1 CDC-ACM firmware drops commands that do not start on a 64B USB packet boundary), and
+ * yields `unchangedSkipped: true` when 0 chunks changed.
  */
 export async function pushFrameViaAsyncTransport(params: {
   transport: AsyncSerialPortTransport;
@@ -1270,26 +1276,27 @@ export async function pushFrameViaAsyncTransport(params: {
 
   await writePacketWithRetryAsync(params.transport, Buffer.from(HEADER_START), 'HEADER_START', true);
 
-  // Pack and write sequential 59-byte packets in <=8KB batches with event-loop yields
-  const BATCH_PACKETS = 128; // 128 * 59 = 7,552 bytes <= 8KB
-  for (let start = 0; start < changedCount; start += BATCH_PACKETS) {
-    const end = Math.min(changedCount, start + BATCH_PACKETS);
-    const batchBuf = buildChunkPacketBatch(params.rgb565Le, diff.changedIndices, start, end);
-    const logBatch = start === 0 || end === changedCount;
-    await writePacketWithRetryAsync(
-      params.transport,
-      batchBuf,
-      diff.fullSync
-        ? `DATA_CHUNK_BATCH[${start}..${end - 1}/${EXPECTED_TOTAL_CHUNKS}]`
-        : `DIFF_CHUNK_BATCH[${changedCount}/${EXPECTED_TOTAL_CHUNKS}]`,
-      logBatch
+  // Send strictly one 59-byte 0x08 chunk packet per write() call so every command starts at a USB bulk packet boundary.
+  const YIELD_EVERY_PACKETS = 128;
+  for (let i = 0; i < changedCount; i++) {
+    const chunkIdx = diff.changedIndices[i];
+    const byteOffset = chunkIdx * IMG_CHUNK_SIZE;
+    const pkt = buildDataChunkPacket(
+      byteOffset,
+      params.rgb565Le.subarray(byteOffset, byteOffset + IMG_CHUNK_SIZE)
     );
-    if (changedCount > BATCH_PACKETS) {
+    const logChunk = i === 0 || i === changedCount - 1;
+    const label = diff.fullSync
+      ? `DATA_CHUNK[${chunkIdx}/${EXPECTED_TOTAL_CHUNKS}]`
+      : `DIFF_CHUNK[${i + 1}/${changedCount} @${chunkIdx}/${EXPECTED_TOTAL_CHUNKS}]`;
+    await writePacketWithRetryAsync(params.transport, pkt, label, logChunk);
+    if (changedCount > YIELD_EVERY_PACKETS && (i & 127) === 127) {
       await new Promise<void>((resolve) => setImmediate(resolve));
     }
   }
 
   await writePacketWithRetryAsync(params.transport, Buffer.from(HEADER_END), 'HEADER_END', true);
+  await params.transport.drainRx();
   recordSerialLog(
     'INFO',
     diff.fullSync ? 'FRAME_COMPLETE_FULL' : `FRAME_COMPLETE_DIFF (${changedCount}/${EXPECTED_TOTAL_CHUNKS})`,

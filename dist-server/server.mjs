@@ -708,7 +708,7 @@ var DEFAULT_CONFIG = {
     autoPushEnabled: false,
     pushIntervalSec: 2,
     pollIntervalMs: 2500,
-    sleepScheduleEnabled: true,
+    sleepScheduleEnabled: false,
     sleepStart: "23:30",
     sleepEnd: "07:00",
     sleepMode: "off",
@@ -898,20 +898,6 @@ function computeDiffChunkIndices(prevRgb565, nextRgb565, forceFull = false) {
   }
   const frameSha256Short = crypto.createHash("sha256").update(nextRgb565).digest("hex").slice(0, 12).toUpperCase();
   return { changedIndices, fullSync, frameSha256Short };
-}
-function buildChunkPacketBatch(rgb565Le, chunkIndices, startIdx, endIdx) {
-  const count = Math.max(0, endIdx - startIdx);
-  const batch = Buffer.allocUnsafe(count * DATA_CHUNK_PACKET_SIZE);
-  const src = Buffer.from(rgb565Le.buffer, rgb565Le.byteOffset, rgb565Le.byteLength);
-  for (let i = 0; i < count; i++) {
-    const chunkIdx = chunkIndices[startIdx + i];
-    const byteOffset = chunkIdx * IMG_CHUNK_SIZE;
-    const dst = i * DATA_CHUNK_PACKET_SIZE;
-    CHUNK_HEADER.copy(batch, dst);
-    batch.writeUInt32LE(byteOffset >>> 0, dst + 8);
-    src.copy(batch, dst + 12, byteOffset, byteOffset + IMG_CHUNK_SIZE);
-  }
-  return batch;
 }
 function parseInitAckResponse(responseBuf) {
   const bytesRead = responseBuf.length;
@@ -1574,6 +1560,7 @@ var LinuxAsyncSerialTransport = class _LinuxAsyncSerialTransport {
   constructor(devicePath, handle) {
     this.handle = null;
     this.pendingReadBuf = Buffer.alloc(0);
+    this.datasyncUnsupported = false;
     this.devicePath = devicePath;
     this.handle = handle;
   }
@@ -1610,7 +1597,7 @@ var LinuxAsyncSerialTransport = class _LinuxAsyncSerialTransport {
           if (Date.now() > deadline) {
             throw new Error(`Async serial write timed out after ${offset}/${data.length} bytes`);
           }
-          await sleepAsyncMs(2);
+          await sleepAsyncMs(1);
         }
       } catch (err) {
         const code = err?.code;
@@ -1618,7 +1605,7 @@ var LinuxAsyncSerialTransport = class _LinuxAsyncSerialTransport {
           if (Date.now() > deadline) {
             throw new Error(`Async serial write timed out (${code}) after ${offset}/${data.length} bytes`);
           }
-          await sleepAsyncMs(2);
+          await sleepAsyncMs(1);
           continue;
         }
         throw err;
@@ -1627,13 +1614,16 @@ var LinuxAsyncSerialTransport = class _LinuxAsyncSerialTransport {
   }
   async flush() {
     if (!this.handle) throw new Error("Async serial port is closed");
+    if (this.datasyncUnsupported) return;
     try {
       await this.handle.datasync();
     } catch (err) {
       const code = err?.code;
-      if (code !== "EINVAL" && code !== "ENOTSUP") {
-        throw err;
+      if (code === "EINVAL" || code === "ENOTSUP") {
+        this.datasyncUnsupported = true;
+        return;
       }
+      throw err;
     }
   }
   async pollIncoming() {
@@ -1749,22 +1739,23 @@ async function pushFrameViaAsyncTransport(params) {
   }
   const totalBytesOnWire = HEADER_START.length + changedCount * DATA_CHUNK_PACKET_SIZE + HEADER_END.length;
   await writePacketWithRetryAsync(params.transport, Buffer.from(HEADER_START), "HEADER_START", true);
-  const BATCH_PACKETS = 128;
-  for (let start = 0; start < changedCount; start += BATCH_PACKETS) {
-    const end = Math.min(changedCount, start + BATCH_PACKETS);
-    const batchBuf = buildChunkPacketBatch(params.rgb565Le, diff.changedIndices, start, end);
-    const logBatch = start === 0 || end === changedCount;
-    await writePacketWithRetryAsync(
-      params.transport,
-      batchBuf,
-      diff.fullSync ? `DATA_CHUNK_BATCH[${start}..${end - 1}/${EXPECTED_TOTAL_CHUNKS}]` : `DIFF_CHUNK_BATCH[${changedCount}/${EXPECTED_TOTAL_CHUNKS}]`,
-      logBatch
+  const YIELD_EVERY_PACKETS = 128;
+  for (let i = 0; i < changedCount; i++) {
+    const chunkIdx = diff.changedIndices[i];
+    const byteOffset = chunkIdx * IMG_CHUNK_SIZE;
+    const pkt = buildDataChunkPacket(
+      byteOffset,
+      params.rgb565Le.subarray(byteOffset, byteOffset + IMG_CHUNK_SIZE)
     );
-    if (changedCount > BATCH_PACKETS) {
+    const logChunk = i === 0 || i === changedCount - 1;
+    const label = diff.fullSync ? `DATA_CHUNK[${chunkIdx}/${EXPECTED_TOTAL_CHUNKS}]` : `DIFF_CHUNK[${i + 1}/${changedCount} @${chunkIdx}/${EXPECTED_TOTAL_CHUNKS}]`;
+    await writePacketWithRetryAsync(params.transport, pkt, label, logChunk);
+    if (changedCount > YIELD_EVERY_PACKETS && (i & 127) === 127) {
       await new Promise((resolve) => setImmediate(resolve));
     }
   }
   await writePacketWithRetryAsync(params.transport, Buffer.from(HEADER_END), "HEADER_END", true);
+  await params.transport.drainRx();
   recordSerialLog(
     "INFO",
     diff.fullSync ? "FRAME_COMPLETE_FULL" : `FRAME_COMPLETE_DIFF (${changedCount}/${EXPECTED_TOTAL_CHUNKS})`,
@@ -2063,7 +2054,7 @@ function detectAsterctlBinary(forceRefresh = false) {
     binaryPath: null,
     executable: false,
     version: null,
-    error: "Optional asterctl binary not installed (live display runs natively via Node serial)"
+    error: null
   };
   return cachedBinaryProbe;
 }
@@ -2079,7 +2070,7 @@ function getAsterctlStatus() {
     mode: !bin.available ? "absent" : running ? "running" : "idle",
     cfgDir: ASTERCTL_DIAG_DIR,
     lastExitCode,
-    lastError: lastAsterctlError || (bin.available ? null : bin.error),
+    lastError: lastAsterctlError || (!bin.available && bin.binaryPath ? bin.error : null),
     logs: [...asterctlLogs]
   };
 }
@@ -2369,7 +2360,7 @@ function buildDiagnosticsSnapshot(sessionPushArmed2, preferredDevicePath, daemon
     sessionPushArmed: sessionPushArmed2,
     daemonState,
     activeTransport: activeTransport2,
-    lastProtocolError: serialDiag.lastProtocolError || asterctl.lastError,
+    lastProtocolError: serialDiag.lastProtocolError || (asterctl.mode === "absent" ? null : asterctl.lastError),
     lastPacketPreview: serialDiag.lastPacketPreview,
     lastDryRunSummary: serialDiag.lastDryRunSummary,
     lastFrame: lastFrameMeta,
@@ -2617,10 +2608,28 @@ function resolveLocalImageDataUri(rawUrl) {
       diskPath = candidate;
     }
   } else if (url.startsWith("/src/assets/images/")) {
+    const baseName = path3.basename(url.split("?")[0]);
     const assetsRoot = path3.resolve(cwd, "src", "assets", "images");
-    const candidate = path3.resolve(assetsRoot, path3.basename(url.split("?")[0]));
-    if (candidate.startsWith(assetsRoot + path3.sep)) {
+    const candidate = path3.resolve(assetsRoot, baseName);
+    if (candidate.startsWith(assetsRoot + path3.sep) && fs3.existsSync(candidate)) {
       diskPath = candidate;
+    } else {
+      const distAssetsRoot = path3.resolve(cwd, "dist", "assets");
+      if (fs3.existsSync(distAssetsRoot)) {
+        const parsed = path3.parse(baseName);
+        try {
+          const matched = fs3.readdirSync(distAssetsRoot).find(
+            (f) => f === baseName || f.startsWith(`${parsed.name}-`) && f.endsWith(parsed.ext)
+          );
+          if (matched) {
+            const distCandidate = path3.resolve(distAssetsRoot, matched);
+            if (distCandidate.startsWith(distAssetsRoot + path3.sep)) {
+              diskPath = distCandidate;
+            }
+          }
+        } catch {
+        }
+      }
     }
   } else if (url.startsWith("/assets/")) {
     const distAssetsRoot = path3.resolve(cwd, "dist", "assets");
@@ -4021,7 +4030,7 @@ function mergeIncomingConfig(current, incoming) {
     dockerIcons: incoming.dockerIcons ?? current.dockerIcons,
     savedScreens: Array.isArray(incoming.savedScreens) ? incoming.savedScreens : current.savedScreens,
     customImages: Array.isArray(incoming.customImages) ? incoming.customImages : current.customImages,
-    hardwareDeploy: incoming.hardwareDeploy ? { ...current.hardwareDeploy, ...incoming.hardwareDeploy } : current.hardwareDeploy
+    hardwareDeploy: current.hardwareDeploy
   };
 }
 function ipv4ToInt(ip) {
@@ -4399,7 +4408,19 @@ var ConfigPatchSchema = z.object({
       mediaType: z.enum(["image", "video"]).optional(),
       createdAt: z.string()
     })
-  ).max(200).optional()
+  ).max(200).optional(),
+  hardwareDeploy: z.object({
+    deployed: z.boolean().optional(),
+    deployedAt: z.string().nullable().optional(),
+    activeIndex: z.number().int().min(0).optional(),
+    currentScreenId: z.string().nullable().optional(),
+    currentScreenName: z.string().nullable().optional(),
+    isSleeping: z.boolean().optional(),
+    effectiveBrightness: z.number().optional(),
+    daemonState: z.string().optional(),
+    lastError: z.string().nullable().optional(),
+    screens: z.array(LcdScreenSchema).max(32).optional()
+  }).passthrough().optional()
 }).strict();
 var UploadInitSchema = z.object({
   name: z.string().min(1).max(200).optional(),
@@ -6464,7 +6485,7 @@ async function runHardwareDaemonTick(getConfig, onConfigPatch, overrideRgbaBase6
   let idx = Math.max(0, Math.min(playlist.length - 1, runtimeState.activeIndex));
   const current = playlist[idx];
   let screenChanged = false;
-  if (!overrideRgbaBase64 && playlist.length > 1 && nowMs - lastRotationSwitchMs >= current.durationSec * 1e3) {
+  if (!overrideRgbaBase64 && cfg.rotationEnabled !== false && playlist.length > 1 && nowMs - lastRotationSwitchMs >= current.durationSec * 1e3) {
     idx = (idx + 1) % playlist.length;
     lastRotationSwitchMs = nowMs;
     screenChanged = true;
@@ -6587,10 +6608,11 @@ async function runHardwareDaemonTick(getConfig, onConfigPatch, overrideRgbaBase6
     powerOff: false
   });
   prevEffectiveBrightness = effectiveBrightness;
+  const nextDaemonState = sessionPushArmed && cfg.hardware.autoPushEnabled !== false ? "active" : "idle";
   consecutiveErrors = 0;
   runtimeState.consecutiveErrors = 0;
   runtimeState.lastError = null;
-  runtimeState.daemonState = "active";
+  runtimeState.daemonState = nextDaemonState;
   runtimeState.activeIndex = idx;
   runtimeState.lastTickAt = (/* @__PURE__ */ new Date()).toISOString();
   runtimeState.currentScreenId = activeScreen.id;
@@ -6604,7 +6626,7 @@ async function runHardwareDaemonTick(getConfig, onConfigPatch, overrideRgbaBase6
     currentScreenName: activeScreen.name,
     isSleeping: sleeping,
     effectiveBrightness,
-    daemonState: "active",
+    daemonState: nextDaemonState,
     lastError: null
   });
   return meta;
@@ -7529,11 +7551,14 @@ function createStudioApp(options) {
       }
       setConfigSerialWritesEnabled(Boolean(currentConfig.hardware.serialWritesEnabled));
     }
-    if (body.hardware && (currentConfig.hardware.brightness !== prevHw.brightness || currentConfig.hardware.rotation !== prevHw.rotation || currentConfig.hardware.devicePath !== prevHw.devicePath || currentConfig.hardware.sleepMode !== prevHw.sleepMode || currentConfig.hardware.sleepDimPercent !== prevHw.sleepDimPercent)) {
+    const hwVisualChanged = Boolean(
+      body.hardware && (currentConfig.hardware.brightness !== prevHw.brightness || currentConfig.hardware.rotation !== prevHw.rotation || currentConfig.hardware.devicePath !== prevHw.devicePath || currentConfig.hardware.sleepScheduleEnabled !== prevHw.sleepScheduleEnabled || currentConfig.hardware.sleepStart !== prevHw.sleepStart || currentConfig.hardware.sleepEnd !== prevHw.sleepEnd || currentConfig.hardware.sleepMode !== prevHw.sleepMode || currentConfig.hardware.sleepDimPercent !== prevHw.sleepDimPercent)
+    );
+    if (hwVisualChanged) {
       resetFrameDiffCache();
     }
+    const enabledPlaylist = currentConfig.screens.filter((s) => s.enabled);
     if (Array.isArray(body.screens)) {
-      const enabledPlaylist = currentConfig.screens.filter((s) => s.enabled);
       const nextIndex = Math.max(
         0,
         Math.min(
@@ -7548,25 +7573,72 @@ function createStudioApp(options) {
         currentScreenName: enabledPlaylist[nextIndex]?.name ?? null,
         screens: structuredClone(enabledPlaylist)
       };
-      if (prevDeployedScreenId && !enabledPlaylist.some((s) => s.id === prevDeployedScreenId) && isSessionPushArmed() && isSerialWritesActive()) {
-        resetDaemonRotation(0);
-        void runHardwareDaemonTick(
-          () => currentConfig,
-          (patch) => {
-            currentConfig.hardwareDeploy = { ...currentConfig.hardwareDeploy, ...patch };
-          },
-          void 0,
-          { forceFullRefresh: true }
-        ).catch((err) => {
-          console.error("[aoostar-config-sync] Failed to sync screen change:", err);
-        });
+    }
+    let triggerDaemonTick = false;
+    const autoPushTurnedOn = Boolean(body.hardware && typeof body.hardware.autoPushEnabled === "boolean") && currentConfig.hardware.autoPushEnabled && !prevHw.autoPushEnabled;
+    const autoPushTurnedOff = Boolean(body.hardware && typeof body.hardware.autoPushEnabled === "boolean") && !currentConfig.hardware.autoPushEnabled && prevHw.autoPushEnabled;
+    if (autoPushTurnedOn) {
+      if (isSerialWritesActive() && !isEmergencyStopped()) {
+        const targetScreens = enabledPlaylist.length > 0 ? enabledPlaylist : currentConfig.screens;
+        const startIdx = Math.max(
+          0,
+          Math.min(
+            Math.max(0, targetScreens.length - 1),
+            currentConfig.hardwareDeploy.activeIndex ?? 0
+          )
+        );
+        currentConfig.hardwareDeploy = {
+          ...currentConfig.hardwareDeploy,
+          deployed: true,
+          deployedAt: currentConfig.hardwareDeploy.deployedAt || (/* @__PURE__ */ new Date()).toISOString(),
+          activeIndex: startIdx,
+          currentScreenId: targetScreens[startIdx]?.id ?? null,
+          currentScreenName: targetScreens[startIdx]?.name ?? null,
+          daemonState: "active",
+          lastError: null,
+          screens: structuredClone(targetScreens)
+        };
+        armSessionPush(true);
+        resetDaemonRotation(startIdx);
+        resetDaemonBackoff();
+        resetFrameDiffCache();
+        triggerDaemonTick = true;
       }
+    } else if (autoPushTurnedOff) {
+      armSessionPush(false);
+      currentConfig.hardwareDeploy = {
+        ...currentConfig.hardwareDeploy,
+        daemonState: "idle"
+      };
+    } else if (Array.isArray(body.screens) && prevDeployedScreenId && !enabledPlaylist.some((s) => s.id === prevDeployedScreenId) && isSessionPushArmed() && isSerialWritesActive() && !isEmergencyStopped()) {
+      resetDaemonRotation(0);
+      triggerDaemonTick = true;
+    } else if (hwVisualChanged && isSessionPushArmed() && isSerialWritesActive() && !isEmergencyStopped() && currentConfig.hardware.autoPushEnabled) {
+      triggerDaemonTick = true;
     }
     if (body.integrations) {
       void refreshIntegrationsCache(currentConfig).catch(() => {
       });
     }
     saveConfig(currentConfig);
+    if (triggerDaemonTick) {
+      void runHardwareDaemonTick(
+        () => currentConfig,
+        (patch) => {
+          currentConfig.hardwareDeploy = { ...currentConfig.hardwareDeploy, ...patch };
+        },
+        void 0,
+        { forceFullRefresh: true }
+      ).catch((err) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        currentConfig.hardwareDeploy = {
+          ...currentConfig.hardwareDeploy,
+          daemonState: "error",
+          lastError: msg
+        };
+        console.error("[aoostar-config-sync] Failed to sync screen change:", err);
+      });
+    }
     res.json(maskConfigForClient(currentConfig));
   });
   app.post("/api/hardware/serial-writes", (req, res) => {
@@ -7589,10 +7661,50 @@ function createStudioApp(options) {
     }
     currentConfig.hardware.serialWritesEnabled = parsed.data.enabled;
     setConfigSerialWritesEnabled(parsed.data.enabled);
+    let triggerAfterUnlock = false;
     if (!parsed.data.enabled) {
       armSessionPush(false);
+      currentConfig.hardwareDeploy.daemonState = "idle";
+    } else if (isSerialWritesActive() && !isEmergencyStopped() && currentConfig.hardware.autoPushEnabled) {
+      const enabledPlaylist = currentConfig.screens.filter((s) => s.enabled);
+      const targetScreens = enabledPlaylist.length > 0 ? enabledPlaylist : currentConfig.screens;
+      const startIdx = Math.max(
+        0,
+        Math.min(
+          Math.max(0, targetScreens.length - 1),
+          currentConfig.hardwareDeploy.activeIndex ?? 0
+        )
+      );
+      currentConfig.hardwareDeploy = {
+        ...currentConfig.hardwareDeploy,
+        deployed: true,
+        deployedAt: currentConfig.hardwareDeploy.deployedAt || (/* @__PURE__ */ new Date()).toISOString(),
+        activeIndex: startIdx,
+        currentScreenId: targetScreens[startIdx]?.id ?? null,
+        currentScreenName: targetScreens[startIdx]?.name ?? null,
+        daemonState: "active",
+        lastError: null,
+        screens: structuredClone(targetScreens)
+      };
+      armSessionPush(true);
+      resetDaemonRotation(startIdx);
+      resetDaemonBackoff();
+      resetFrameDiffCache();
+      triggerAfterUnlock = true;
     }
     saveConfig(currentConfig);
+    if (triggerAfterUnlock) {
+      void runHardwareDaemonTick(
+        () => currentConfig,
+        (patch) => {
+          currentConfig.hardwareDeploy = { ...currentConfig.hardwareDeploy, ...patch };
+        },
+        void 0,
+        { forceFullRefresh: true }
+      ).catch((err) => {
+        console.error("[aoostar-serial-unlock] Initial daemon push failed:", err);
+      });
+    }
     res.json({
       ok: true,
       serialWritesEnabled: isSerialWritesActive(),
@@ -8113,7 +8225,15 @@ function createStudioApp(options) {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       const status = msg.includes("Serial writes") || msg.includes("Emergency stop") ? 403 : 500;
-      res.status(status).json({ ok: false, error: msg });
+      res.status(status).json({
+        ok: false,
+        error: msg,
+        diagnostics: buildDiagnosticsSnapshot(
+          isSessionPushArmed(),
+          currentConfig.hardware.devicePath,
+          getDaemonStatus().daemonState
+        )
+      });
     }
   });
   app.post("/api/display/off", async (_req, res) => {
@@ -8137,7 +8257,15 @@ function createStudioApp(options) {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       const status = msg.includes("Serial writes") || msg.includes("Emergency stop") ? 403 : 500;
-      res.status(status).json({ ok: false, error: msg });
+      res.status(status).json({
+        ok: false,
+        error: msg,
+        diagnostics: buildDiagnosticsSnapshot(
+          isSessionPushArmed(),
+          currentConfig.hardware.devicePath,
+          getDaemonStatus().daemonState
+        )
+      });
     }
   });
   app.post("/api/hardware/force-refresh", async (_req, res) => {
@@ -8161,7 +8289,15 @@ function createStudioApp(options) {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       const status = msg.includes("Serial writes") || msg.includes("Emergency stop") ? 403 : 500;
-      res.status(status).json({ ok: false, error: msg });
+      res.status(status).json({
+        ok: false,
+        error: msg,
+        diagnostics: buildDiagnosticsSnapshot(
+          isSessionPushArmed(),
+          currentConfig.hardware.devicePath,
+          getDaemonStatus().daemonState
+        )
+      });
     }
   });
   app.post("/api/hardware/stop-serial", async (_req, res) => {
@@ -8227,6 +8363,7 @@ function createStudioApp(options) {
       });
       return;
     }
+    currentConfig.hardware.autoPushEnabled = true;
     currentConfig.hardwareDeploy = {
       ...currentConfig.hardwareDeploy,
       deployed: true,
@@ -8255,6 +8392,7 @@ function createStudioApp(options) {
       res.json({
         meta: meta ?? getLastFrameMeta(),
         daemonStatus: getDaemonStatus(),
+        hardware: currentConfig.hardware,
         hardwareDeploy: currentConfig.hardwareDeploy
       });
     } catch (err) {

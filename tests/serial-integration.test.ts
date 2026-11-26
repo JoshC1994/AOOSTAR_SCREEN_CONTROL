@@ -14,8 +14,10 @@ import {
   rgbaToRgb565Le,
 } from '../src/server/aoostar/protocol.ts';
 import {
+  pushFrameViaAsyncTransport,
   pushFrameViaSerialTransport,
   sendDisplayOnHandshake,
+  type AsyncSerialPortTransport,
   type SerialPortTransport,
 } from '../src/server/aoostar/serial.ts';
 
@@ -135,4 +137,79 @@ test('integration: transient write errors retry up to SERIAL_RETRY=3 and missing
   const failingFd = new MockSerialFdTransport([0x41]);
   failingFd.failFirstNWrites = 10; // exceeds SERIAL_RETRY = 3
   assert.throws(() => sendDisplayOnHandshake(failingFd), /Simulated transient EIO/);
+});
+
+test('integration: async serial transport sends strictly one 59-byte packet per writeAll call for full and diff frames', async () => {
+  class MockAsyncTransport implements AsyncSerialPortTransport {
+    public writes: Buffer[] = [];
+    public rxQueue: Buffer = Buffer.alloc(0);
+    public drainedCount = 0;
+    async writeAll(data: Buffer) {
+      const copy = Buffer.from(data);
+      this.writes.push(copy);
+      if (copy.equals(DISPLAY_ON)) {
+        this.rxQueue = Buffer.from([0x41]);
+      }
+    }
+    async flush() {}
+    async drainRx() {
+      this.drainedCount += 1;
+      this.rxQueue = Buffer.alloc(0);
+    }
+    async bytesToRead() {
+      return this.rxQueue.length;
+    }
+    async read(maxBytes: number) {
+      const out = this.rxQueue.subarray(0, maxBytes);
+      this.rxQueue = this.rxQueue.subarray(out.length);
+      return Buffer.from(out);
+    }
+    async sleepMs() {}
+    async close() {}
+  }
+
+  const frame1 = Buffer.alloc(EXPECTED_RGB565_BYTES, 0x11);
+  const frame2 = Buffer.from(frame1);
+  // Change 5 non-adjacent chunks so a buggy batching implementation would concatenate 5 * 59 = 295 bytes
+  for (const idx of [0, 3, 100, 5000, EXPECTED_TOTAL_CHUNKS - 1]) {
+    frame2[idx * IMG_CHUNK_SIZE] = 0x99;
+  }
+
+  const transport = new MockAsyncTransport();
+  const fullRes = await pushFrameViaAsyncTransport({
+    transport,
+    rgb565Le: frame1,
+    prevRgb565: null,
+    initializeDisplay: true,
+  });
+
+  assert.equal(fullRes.fullSync, true);
+  assert.equal(fullRes.chunksSent, EXPECTED_TOTAL_CHUNKS);
+  assert.equal(transport.writes.length, EXPECTED_TOTAL_CHUNKS + 3);
+  assert.deepEqual(transport.writes[0], DISPLAY_ON);
+  assert.deepEqual(transport.writes[1], HEADER_START);
+  for (let i = 0; i < EXPECTED_TOTAL_CHUNKS; i++) {
+    const pkt = transport.writes[i + 2];
+    assert.equal(pkt.length, 59, `Full frame write #${i} must be exactly one 59B packet`);
+    assert.deepEqual(pkt.subarray(0, 8), CHUNK_HEADER);
+  }
+  assert.deepEqual(transport.writes[transport.writes.length - 1], HEADER_END);
+
+  transport.writes.length = 0;
+  const diffRes = await pushFrameViaAsyncTransport({
+    transport,
+    rgb565Le: frame2,
+    prevRgb565: frame1,
+    initializeDisplay: false,
+  });
+
+  assert.equal(diffRes.fullSync, false);
+  assert.equal(diffRes.chunksSent, 5);
+  assert.equal(transport.writes.length, 7); // HEADER_START + 5 x 59B chunks + HEADER_END
+  assert.deepEqual(transport.writes[0], HEADER_START);
+  for (let i = 1; i <= 5; i++) {
+    assert.equal(transport.writes[i].length, 59);
+    assert.deepEqual(transport.writes[i].subarray(0, 8), CHUNK_HEADER);
+  }
+  assert.deepEqual(transport.writes[6], HEADER_END);
 });

@@ -312,17 +312,25 @@ export default function App() {
       const next = updater(prev);
       if (saveTimeoutRef.current) window.clearTimeout(saveTimeoutRef.current);
       saveTimeoutRef.current = window.setTimeout(() => {
+        const {hardwareDeploy: _omitHardwareDeploy, ...configPayload} = next;
         void apiFetch('/api/config', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify(next),
+          body: JSON.stringify(configPayload),
         })
           .then(async (res) => {
-            if (!res.ok) return;
+            if (!res.ok) {
+              const errBody = (await res.json().catch(() => null)) as {error?: string; issues?: string[]} | null;
+              const detail = errBody?.issues?.[0] || errBody?.error || `Settings save failed (HTTP ${res.status})`;
+              setPushFeedback({ok: false, text: detail});
+              window.setTimeout(() => setPushFeedback(null), 5000);
+              return;
+            }
             const updated = normalizeClientConfig(await res.json().catch(() => null));
             if (updated) {
               setConfig((curr) => ({
                 ...curr,
+                hardwareDeploy: updated.hardwareDeploy,
                 integrations: {
                   ...curr.integrations,
                   agentTokenSet: updated.integrations.agentTokenSet,
@@ -332,7 +340,10 @@ export default function App() {
               }));
             }
           })
-          .catch(() => {});
+          .catch(() => {
+            setPushFeedback({ok: false, text: 'Settings save request failed'});
+            window.setTimeout(() => setPushFeedback(null), 5000);
+          });
       }, 250);
       return next;
     });
@@ -369,17 +380,24 @@ export default function App() {
         if (res.ok) {
           const data = (await res.json()) as {
             meta: LastFrameMeta;
+            hardware?: StudioConfig['hardware'];
             hardwareDeploy: HardwareDeployState;
           };
           setLastFrame(data.meta);
           setConfig((prev) => ({
             ...prev,
+            hardware: data.hardware ? {...prev.hardware, ...data.hardware} : prev.hardware,
             hardwareDeploy: data.hardwareDeploy,
           }));
           if (data.meta.lastError) {
             setPushFeedback({
               ok: false,
               text: data.meta.lastError,
+            });
+          } else if (data.hardwareDeploy?.daemonState === 'sleeping' || data.meta.powerState === 'off') {
+            setPushFeedback({
+              ok: true,
+              text: 'Sleep mode active — LCD powered off (check Settings > Sleep Schedule or Array status)',
             });
           } else {
             setPushFeedback({
@@ -552,7 +570,7 @@ export default function App() {
         <div className="flex items-center gap-3 shrink-0">
           {pushFeedback && (
             <span
-              className={`hidden xl:inline text-xs font-mono whitespace-nowrap max-w-[340px] truncate ${
+              className={`hidden sm:inline text-xs font-mono whitespace-nowrap max-w-[300px] lg:max-w-[380px] truncate ${
                 pushFeedback.ok
                   ? 'text-emerald-600 dark:text-emerald-400'
                   : 'text-amber-700 dark:text-amber-400'

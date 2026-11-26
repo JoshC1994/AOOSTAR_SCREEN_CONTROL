@@ -144,7 +144,7 @@ export function detectAsterctlBinary(forceRefresh = false): CachedBinaryProbe {
     binaryPath: null,
     executable: false,
     version: null,
-    error: 'Optional asterctl binary not installed (live display runs natively via Node serial)',
+    error: null,
   };
   return cachedBinaryProbe;
 }
@@ -161,7 +161,7 @@ export function getAsterctlStatus(): AsterctlStatus {
     mode: !bin.available ? 'absent' : running ? 'running' : 'idle',
     cfgDir: ASTERCTL_DIAG_DIR,
     lastExitCode,
-    lastError: lastAsterctlError || (bin.available ? null : bin.error),
+    lastError: lastAsterctlError || (!bin.available && bin.binaryPath ? bin.error : null),
     logs: [...asterctlLogs],
   };
 }

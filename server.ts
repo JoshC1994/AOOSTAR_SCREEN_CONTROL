@@ -11,6 +11,7 @@ import {
   dryRunScreenFrame,
   getLastFrameBuffer,
   getLastFrameMeta,
+  isEmergencyStopped,
   isSerialWritesActive,
   isSerialWritesEnvLocked,
   pushHardwareFrame,
@@ -462,19 +463,23 @@ export function createStudioApp(options?: {
       setConfigSerialWritesEnabled(Boolean(currentConfig.hardware.serialWritesEnabled));
     }
 
-    if (
+    const hwVisualChanged = Boolean(
       body.hardware &&
-      (currentConfig.hardware.brightness !== prevHw.brightness ||
-        currentConfig.hardware.rotation !== prevHw.rotation ||
-        currentConfig.hardware.devicePath !== prevHw.devicePath ||
-        currentConfig.hardware.sleepMode !== prevHw.sleepMode ||
-        currentConfig.hardware.sleepDimPercent !== prevHw.sleepDimPercent)
-    ) {
+        (currentConfig.hardware.brightness !== prevHw.brightness ||
+          currentConfig.hardware.rotation !== prevHw.rotation ||
+          currentConfig.hardware.devicePath !== prevHw.devicePath ||
+          currentConfig.hardware.sleepScheduleEnabled !== prevHw.sleepScheduleEnabled ||
+          currentConfig.hardware.sleepStart !== prevHw.sleepStart ||
+          currentConfig.hardware.sleepEnd !== prevHw.sleepEnd ||
+          currentConfig.hardware.sleepMode !== prevHw.sleepMode ||
+          currentConfig.hardware.sleepDimPercent !== prevHw.sleepDimPercent)
+    );
+    if (hwVisualChanged) {
       resetFrameDiffCache();
     }
 
+    const enabledPlaylist = currentConfig.screens.filter((s) => s.enabled);
     if (Array.isArray(body.screens)) {
-      const enabledPlaylist = currentConfig.screens.filter((s) => s.enabled);
       const nextIndex = Math.max(
         0,
         Math.min(
@@ -489,24 +494,69 @@ export function createStudioApp(options?: {
         currentScreenName: enabledPlaylist[nextIndex]?.name ?? null,
         screens: structuredClone(enabledPlaylist),
       };
-      if (
-        prevDeployedScreenId &&
-        !enabledPlaylist.some((s) => s.id === prevDeployedScreenId) &&
-        isSessionPushArmed() &&
-        isSerialWritesActive()
-      ) {
-        resetDaemonRotation(0);
-        void runHardwareDaemonTick(
-          () => currentConfig,
-          (patch) => {
-            currentConfig.hardwareDeploy = {...currentConfig.hardwareDeploy, ...patch};
-          },
-          undefined,
-          {forceFullRefresh: true}
-        ).catch((err) => {
-          console.error('[aoostar-config-sync] Failed to sync screen change:', err);
-        });
+    }
+
+    let triggerDaemonTick = false;
+    const autoPushTurnedOn =
+      Boolean(body.hardware && typeof body.hardware.autoPushEnabled === 'boolean') &&
+      currentConfig.hardware.autoPushEnabled &&
+      !prevHw.autoPushEnabled;
+    const autoPushTurnedOff =
+      Boolean(body.hardware && typeof body.hardware.autoPushEnabled === 'boolean') &&
+      !currentConfig.hardware.autoPushEnabled &&
+      prevHw.autoPushEnabled;
+
+    if (autoPushTurnedOn) {
+      if (isSerialWritesActive() && !isEmergencyStopped()) {
+        const targetScreens = enabledPlaylist.length > 0 ? enabledPlaylist : currentConfig.screens;
+        const startIdx = Math.max(
+          0,
+          Math.min(
+            Math.max(0, targetScreens.length - 1),
+            currentConfig.hardwareDeploy.activeIndex ?? 0
+          )
+        );
+        currentConfig.hardwareDeploy = {
+          ...currentConfig.hardwareDeploy,
+          deployed: true,
+          deployedAt: currentConfig.hardwareDeploy.deployedAt || new Date().toISOString(),
+          activeIndex: startIdx,
+          currentScreenId: targetScreens[startIdx]?.id ?? null,
+          currentScreenName: targetScreens[startIdx]?.name ?? null,
+          daemonState: 'active',
+          lastError: null,
+          screens: structuredClone(targetScreens),
+        };
+        armSessionPush(true);
+        resetDaemonRotation(startIdx);
+        resetDaemonBackoff();
+        resetFrameDiffCache();
+        triggerDaemonTick = true;
       }
+    } else if (autoPushTurnedOff) {
+      armSessionPush(false);
+      currentConfig.hardwareDeploy = {
+        ...currentConfig.hardwareDeploy,
+        daemonState: 'idle',
+      };
+    } else if (
+      Array.isArray(body.screens) &&
+      prevDeployedScreenId &&
+      !enabledPlaylist.some((s) => s.id === prevDeployedScreenId) &&
+      isSessionPushArmed() &&
+      isSerialWritesActive() &&
+      !isEmergencyStopped()
+    ) {
+      resetDaemonRotation(0);
+      triggerDaemonTick = true;
+    } else if (
+      hwVisualChanged &&
+      isSessionPushArmed() &&
+      isSerialWritesActive() &&
+      !isEmergencyStopped() &&
+      currentConfig.hardware.autoPushEnabled
+    ) {
+      triggerDaemonTick = true;
     }
 
     if (body.integrations) {
@@ -514,6 +564,26 @@ export function createStudioApp(options?: {
     }
 
     saveConfig(currentConfig);
+
+    if (triggerDaemonTick) {
+      void runHardwareDaemonTick(
+        () => currentConfig,
+        (patch) => {
+          currentConfig.hardwareDeploy = {...currentConfig.hardwareDeploy, ...patch};
+        },
+        undefined,
+        {forceFullRefresh: true}
+      ).catch((err) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        currentConfig.hardwareDeploy = {
+          ...currentConfig.hardwareDeploy,
+          daemonState: 'error',
+          lastError: msg,
+        };
+        console.error('[aoostar-config-sync] Failed to sync screen change:', err);
+      });
+    }
+
     res.json(maskConfigForClient(currentConfig));
   });
 
@@ -538,10 +608,55 @@ export function createStudioApp(options?: {
 
     currentConfig.hardware.serialWritesEnabled = parsed.data.enabled;
     setConfigSerialWritesEnabled(parsed.data.enabled);
+    let triggerAfterUnlock = false;
     if (!parsed.data.enabled) {
       armSessionPush(false);
+      currentConfig.hardwareDeploy.daemonState = 'idle';
+    } else if (
+      isSerialWritesActive() &&
+      !isEmergencyStopped() &&
+      currentConfig.hardware.autoPushEnabled
+    ) {
+      const enabledPlaylist = currentConfig.screens.filter((s) => s.enabled);
+      const targetScreens = enabledPlaylist.length > 0 ? enabledPlaylist : currentConfig.screens;
+      const startIdx = Math.max(
+        0,
+        Math.min(
+          Math.max(0, targetScreens.length - 1),
+          currentConfig.hardwareDeploy.activeIndex ?? 0
+        )
+      );
+      currentConfig.hardwareDeploy = {
+        ...currentConfig.hardwareDeploy,
+        deployed: true,
+        deployedAt: currentConfig.hardwareDeploy.deployedAt || new Date().toISOString(),
+        activeIndex: startIdx,
+        currentScreenId: targetScreens[startIdx]?.id ?? null,
+        currentScreenName: targetScreens[startIdx]?.name ?? null,
+        daemonState: 'active',
+        lastError: null,
+        screens: structuredClone(targetScreens),
+      };
+      armSessionPush(true);
+      resetDaemonRotation(startIdx);
+      resetDaemonBackoff();
+      resetFrameDiffCache();
+      triggerAfterUnlock = true;
     }
     saveConfig(currentConfig);
+
+    if (triggerAfterUnlock) {
+      void runHardwareDaemonTick(
+        () => currentConfig,
+        (patch) => {
+          currentConfig.hardwareDeploy = {...currentConfig.hardwareDeploy, ...patch};
+        },
+        undefined,
+        {forceFullRefresh: true}
+      ).catch((err) => {
+        console.error('[aoostar-serial-unlock] Initial daemon push failed:', err);
+      });
+    }
 
     res.json({
       ok: true,
@@ -1149,7 +1264,15 @@ export function createStudioApp(options?: {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       const status = msg.includes('Serial writes') || msg.includes('Emergency stop') ? 403 : 500;
-      res.status(status).json({ok: false, error: msg});
+      res.status(status).json({
+        ok: false,
+        error: msg,
+        diagnostics: buildDiagnosticsSnapshot(
+          isSessionPushArmed(),
+          currentConfig.hardware.devicePath,
+          getDaemonStatus().daemonState
+        ),
+      });
     }
   });
 
@@ -1174,7 +1297,15 @@ export function createStudioApp(options?: {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       const status = msg.includes('Serial writes') || msg.includes('Emergency stop') ? 403 : 500;
-      res.status(status).json({ok: false, error: msg});
+      res.status(status).json({
+        ok: false,
+        error: msg,
+        diagnostics: buildDiagnosticsSnapshot(
+          isSessionPushArmed(),
+          currentConfig.hardware.devicePath,
+          getDaemonStatus().daemonState
+        ),
+      });
     }
   });
 
@@ -1199,7 +1330,15 @@ export function createStudioApp(options?: {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       const status = msg.includes('Serial writes') || msg.includes('Emergency stop') ? 403 : 500;
-      res.status(status).json({ok: false, error: msg});
+      res.status(status).json({
+        ok: false,
+        error: msg,
+        diagnostics: buildDiagnosticsSnapshot(
+          isSessionPushArmed(),
+          currentConfig.hardware.devicePath,
+          getDaemonStatus().daemonState
+        ),
+      });
     }
   });
 
@@ -1276,6 +1415,7 @@ export function createStudioApp(options?: {
       return;
     }
 
+    currentConfig.hardware.autoPushEnabled = true;
     currentConfig.hardwareDeploy = {
       ...currentConfig.hardwareDeploy,
       deployed: true,
@@ -1308,6 +1448,7 @@ export function createStudioApp(options?: {
       res.json({
         meta: meta ?? getLastFrameMeta(),
         daemonStatus: getDaemonStatus(),
+        hardware: currentConfig.hardware,
         hardwareDeploy: currentConfig.hardwareDeploy,
       });
     } catch (err) {

@@ -80,10 +80,33 @@ function resolveLocalImageDataUri(rawUrl?: string): string | null {
       diskPath = candidate;
     }
   } else if (url.startsWith('/src/assets/images/')) {
+    const baseName = path.basename(url.split('?')[0]);
     const assetsRoot = path.resolve(cwd, 'src', 'assets', 'images');
-    const candidate = path.resolve(assetsRoot, path.basename(url.split('?')[0]));
-    if (candidate.startsWith(assetsRoot + path.sep)) {
+    const candidate = path.resolve(assetsRoot, baseName);
+    if (candidate.startsWith(assetsRoot + path.sep) && fs.existsSync(candidate)) {
       diskPath = candidate;
+    } else {
+      const distAssetsRoot = path.resolve(cwd, 'dist', 'assets');
+      if (fs.existsSync(distAssetsRoot)) {
+        const parsed = path.parse(baseName);
+        try {
+          const matched = fs
+            .readdirSync(distAssetsRoot)
+            .find(
+              (f) =>
+                f === baseName ||
+                (f.startsWith(`${parsed.name}-`) && f.endsWith(parsed.ext))
+            );
+          if (matched) {
+            const distCandidate = path.resolve(distAssetsRoot, matched);
+            if (distCandidate.startsWith(distAssetsRoot + path.sep)) {
+              diskPath = distCandidate;
+            }
+          }
+        } catch {
+          // ignore
+        }
+      }
     }
   } else if (url.startsWith('/assets/')) {
     const distAssetsRoot = path.resolve(cwd, 'dist', 'assets');

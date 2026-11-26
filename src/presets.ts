@@ -1036,7 +1036,7 @@ export const DEFAULT_CONFIG: StudioConfig = {
     autoPushEnabled: false,
     pushIntervalSec: 2,
     pollIntervalMs: 2500,
-    sleepScheduleEnabled: true,
+    sleepScheduleEnabled: false,
     sleepStart: '23:30',
     sleepEnd: '07:00',
     sleepMode: 'off',
