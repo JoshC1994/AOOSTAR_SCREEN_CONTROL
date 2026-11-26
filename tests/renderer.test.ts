@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {DEFAULT_CONFIG} from '../src/presets.ts';
+import {DEFAULT_CONFIG, PREMADE_SCREENS} from '../src/presets.ts';
 import {DISPLAY_HEIGHT, DISPLAY_WIDTH} from '../src/server/aoostar/protocol.ts';
 import {renderScreenToPngBuffer, renderScreenToRgbaBuffer} from '../src/server/frameRenderer.ts';
 import {buildExposedEntities} from '../src/server/telemetry.ts';
@@ -202,4 +202,52 @@ test('server-side renderer scales brightness, supports blank mode, and handles u
     brightnessPercent: 100,
   });
   assert.ok(halfBright[0] < fullBright[0], '50% brightness should scale pixel luminance down');
+});
+
+test('all premade screen layouts fit inside 960x376 without overlaps and respect fontScale presets', () => {
+  const telemetry = makeSampleTelemetry();
+  const exposed = buildExposedEntities(telemetry, [], [], {});
+
+  for (const screen of PREMADE_SCREENS) {
+    assert.ok(screen.widgets.length >= 3 && screen.widgets.length <= 5, `${screen.id} should stay uncluttered`);
+    for (let i = 0; i < screen.widgets.length; i++) {
+      const a = screen.widgets[i];
+      assert.ok(a.x >= 0 && a.y >= 0, `${screen.id}:${a.id} negative origin`);
+      assert.ok(a.x + a.w <= DISPLAY_WIDTH, `${screen.id}:${a.id} exceeds width`);
+      assert.ok(a.y + a.h <= DISPLAY_HEIGHT, `${screen.id}:${a.id} exceeds height`);
+      for (let j = i + 1; j < screen.widgets.length; j++) {
+        const b = screen.widgets[j];
+        const overlaps = a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+        assert.equal(overlaps, false, `${screen.id}: ${a.id} overlaps ${b.id}`);
+      }
+    }
+
+    const rgba = renderScreenToRgbaBuffer({
+      screen,
+      telemetry,
+      haEntities: [],
+      exposedEntities: exposed,
+    });
+    assert.equal(rgba.length, DISPLAY_WIDTH * DISPLAY_HEIGHT * 4);
+  }
+
+  const smallScale = renderScreenToRgbaBuffer({
+    screen: {
+      ...PREMADE_SCREENS[0],
+      widgets: PREMADE_SCREENS[0].widgets.map((w) => ({...w, fontScale: 0.75, fontSizePreset: 'sm' as const})),
+    },
+    telemetry,
+    haEntities: [],
+    exposedEntities: exposed,
+  });
+  const largeScale = renderScreenToRgbaBuffer({
+    screen: {
+      ...PREMADE_SCREENS[0],
+      widgets: PREMADE_SCREENS[0].widgets.map((w) => ({...w, fontScale: 1.35, fontSizePreset: 'xl' as const})),
+    },
+    telemetry,
+    haEntities: [],
+    exposedEntities: exposed,
+  });
+  assert.equal(Buffer.compare(smallScale, largeScale) !== 0, true, 'fontScale presets should visually change rendered output');
 });

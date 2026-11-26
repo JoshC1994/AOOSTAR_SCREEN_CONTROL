@@ -3,6 +3,7 @@ import {
   ArrowDown,
   ArrowUp,
   BookmarkPlus,
+  Check,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -13,6 +14,7 @@ import {
   Grid,
   Image as ImageIcon,
   Pause,
+  Pencil,
   Play,
   Plus,
   SlidersHorizontal,
@@ -54,6 +56,8 @@ interface ScreenStudioViewProps {
   haEntities: HomeAssistantEntity[];
   exposedEntities: ExposedEntity[];
   onUpdateConfig: (updater: (prev: StudioConfig) => StudioConfig) => void;
+  editTrigger?: number;
+  onNavigateToRotationSettings?: () => void;
 }
 
 const SNAP_GRID = 8;
@@ -102,7 +106,11 @@ export function ScreenStudioView({
   haEntities,
   exposedEntities,
   onUpdateConfig,
+  editTrigger = 0,
+  onNavigateToRotationSettings,
 }: ScreenStudioViewProps) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [testRotating, setTestRotating] = useState(false);
   const [selectedWidgetId, setSelectedWidgetId] = useState<string | null>(null);
   const [leftTab, setLeftTab] = useState<'widgets' | 'themes' | 'photos'>('widgets');
   const [showTemplateModal, setShowTemplateModal] = useState(false);
@@ -143,6 +151,13 @@ export function ScreenStudioView({
   );
 
   useEffect(() => {
+    if (editTrigger > 0) {
+      setIsEditing(true);
+      setTestRotating(false);
+    }
+  }, [editTrigger]);
+
+  useEffect(() => {
     const updateScale = () => {
       const el = stageContainerRef.current;
       if (!el) return;
@@ -154,10 +169,10 @@ export function ScreenStudioView({
     const ro = new ResizeObserver(updateScale);
     if (stageContainerRef.current) ro.observe(stageContainerRef.current);
     return () => ro.disconnect();
-  }, []);
+  }, [isEditing]);
 
   useEffect(() => {
-    if (!config.rotationEnabled || !activeScreen || !activeScreen.enabled || enabledScreens.length === 0) {
+    if (!testRotating || !activeScreen || !activeScreen.enabled || enabledScreens.length === 0) {
       setCycleRemainingSec(0);
       return;
     }
@@ -178,7 +193,7 @@ export function ScreenStudioView({
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [config.rotationEnabled, enabledScreens, activeScreen?.id, activeScreen?.enabled, activeScreen?.durationSec]);
+  }, [testRotating, enabledScreens, activeScreen?.id, activeScreen?.enabled, activeScreen?.durationSec]);
 
   const updateActiveScreen = (updater: (scr: LcdScreen) => LcdScreen) => {
     if (!activeScreen) return;
@@ -597,22 +612,44 @@ export function ScreenStudioView({
 
         <div className="flex items-center gap-2 shrink-0">
           <button
-            onClick={() =>
-              onUpdateConfig((prev) => ({...prev, rotationEnabled: !prev.rotationEnabled}))
-            }
-            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium border transition-colors whitespace-nowrap shrink-0 ${
-              config.rotationEnabled
-                ? 'bg-amber-500/20 border-amber-500/50 text-amber-700 dark:text-amber-300'
+            type="button"
+            onClick={() => setTestRotating((prev) => !prev)}
+            disabled={enabledScreens.length < 2}
+            title="Preview screen cycling in your browser without changing hardware auto-rotate settings"
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium border transition-colors whitespace-nowrap shrink-0 disabled:opacity-45 ${
+              testRotating
+                ? 'bg-sky-500/15 border-sky-500/50 text-sky-700 dark:text-sky-300'
                 : 'bg-slate-100 dark:bg-[#141A26] border-slate-300 dark:border-[#263042] text-slate-800 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-[#1B2334]'
             }`}
           >
-            {config.rotationEnabled ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
-            {config.rotationEnabled ? `Rotating (${cycleRemainingSec}s)` : 'Auto-Rotate'}
+            {testRotating ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+            {testRotating ? `Stop Test (${cycleRemainingSec}s)` : 'Test Rotate'}
+          </button>
+
+          <button
+            type="button"
+            data-guide="edit-layout-btn"
+            onClick={() => {
+              setIsEditing((prev) => {
+                const next = !prev;
+                if (next) setTestRotating(false);
+                else setSelectedWidgetId(null);
+                return next;
+              });
+            }}
+            className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-md text-xs font-semibold border transition-colors whitespace-nowrap shrink-0 ${
+              isEditing
+                ? 'bg-amber-500 border-amber-500 text-slate-950 hover:bg-amber-400'
+                : 'bg-slate-100 dark:bg-[#141A26] border-slate-300 dark:border-[#263042] text-slate-800 dark:text-slate-200 hover:border-amber-500/60'
+            }`}
+          >
+            {isEditing ? <Check className="w-3.5 h-3.5" /> : <Pencil className="w-3.5 h-3.5" />}
+            {isEditing ? 'Done Editing' : 'Edit'}
           </button>
         </div>
       </div>
 
-      {/* Main 3-Pane Studio */}
+      {/* Main Stage (1-Pane Preview OR 3-Pane Studio Editor) */}
       {!activeScreen ? (
         <div className="flex-1 flex items-center justify-center bg-slate-200/70 dark:bg-[#080B10] p-8">
           <div className="max-w-md rounded-lg border border-slate-200 dark:border-[#1F2937] bg-white dark:bg-[#0F131C] p-6 text-center space-y-3 shadow-lg">
@@ -635,8 +672,15 @@ export function ScreenStudioView({
           </div>
         </div>
       ) : (
-      <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr_320px] flex-1 min-h-0 overflow-hidden">
-        {/* Left Drawer */}
+      <div
+        className={
+          isEditing
+            ? 'grid grid-cols-1 lg:grid-cols-[260px_1fr_320px] flex-1 min-h-0 overflow-hidden'
+            : 'flex flex-col flex-1 min-h-0 overflow-hidden'
+        }
+      >
+        {/* Left Drawer (only rendered in Edit mode) */}
+        {isEditing && (
         <aside
           data-guide="left-drawer"
           className="border-r border-slate-200 dark:border-[#1F2937] bg-white dark:bg-[#0F131C] flex flex-col overflow-hidden"
@@ -968,6 +1012,7 @@ export function ScreenStudioView({
             </div>
           )}
         </aside>
+        )}
 
         {/* Center Stage: Live 960x376 Bezel */}
         <main
@@ -975,16 +1020,18 @@ export function ScreenStudioView({
           onClick={(e) => {
             if (!justDraggedRef.current && e.target === e.currentTarget) setSelectedWidgetId(null);
           }}
-          className="bg-slate-200/80 dark:bg-[#080B10] flex flex-col items-center justify-center p-6 overflow-auto relative"
+          className="flex-1 bg-slate-200/80 dark:bg-[#080B10] flex flex-col items-center justify-center p-6 overflow-auto relative"
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-[980px] flex items-center justify-between mb-3"
+            className="w-full max-w-[980px] flex items-center justify-between mb-3 gap-4"
           >
             <span className="text-xs text-slate-600 dark:text-slate-400">
-              Live values update every 2.5s. Click any block to assign an entity, image, or ApexCharts code.
+              {isEditing
+                ? 'Live preview · Drag blocks or click any block to assign entities, graphs, or styles.'
+                : 'Live display preview · Click Edit above to customize blocks, themes, or media.'}
             </span>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 shrink-0">
               <button
                 onClick={() => void handleOpenServerPreview()}
                 disabled={loadingServerPreview}
@@ -993,17 +1040,19 @@ export function ScreenStudioView({
                 <Eye className="w-3.5 h-3.5 text-amber-500" />
                 {loadingServerPreview ? 'Rendering...' : 'Server Preview'}
               </button>
-              <button
-                onClick={() => setShowGrid((g) => !g)}
-                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs border transition-colors whitespace-nowrap ${
-                  showGrid
-                    ? 'bg-white dark:bg-[#1A2233] border-slate-400 dark:border-slate-600 text-slate-900 dark:text-slate-100'
-                    : 'bg-white/80 dark:bg-[#111622] border-slate-300 dark:border-[#1F2937] text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-                }`}
-              >
-                <Grid className="w-3.5 h-3.5" />
-                Snap Grid
-              </button>
+              {isEditing && (
+                <button
+                  onClick={() => setShowGrid((g) => !g)}
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs border transition-colors whitespace-nowrap ${
+                    showGrid
+                      ? 'bg-white dark:bg-[#1A2233] border-slate-400 dark:border-slate-600 text-slate-900 dark:text-slate-100'
+                      : 'bg-white/80 dark:bg-[#111622] border-slate-300 dark:border-[#1F2937] text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                  }`}
+                >
+                  <Grid className="w-3.5 h-3.5" />
+                  Snap Grid
+                </button>
+              )}
             </div>
           </div>
 
@@ -1060,7 +1109,7 @@ export function ScreenStudioView({
                   />
                 )}
 
-                {showGrid && (
+                {isEditing && showGrid && (
                   <div
                     className="absolute inset-0 pointer-events-none opacity-20"
                     style={{
@@ -1072,23 +1121,35 @@ export function ScreenStudioView({
                 )}
 
                 {activeScreen.widgets.map((widget) => {
-                  const isSelected = widget.id === selectedWidgetId;
+                  const isSelected = isEditing && widget.id === selectedWidgetId;
                   return (
                     <div
                       key={widget.id}
-                      onPointerDown={(e) => handleWidgetPointerDown(e, widget, 'move')}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSelectedWidgetId(widget.id);
-                      }}
+                      onPointerDown={
+                        isEditing ? (e) => handleWidgetPointerDown(e, widget, 'move') : undefined
+                      }
+                      onClick={
+                        isEditing
+                          ? (e) => {
+                              e.stopPropagation();
+                              setSelectedWidgetId(widget.id);
+                            }
+                          : undefined
+                      }
                       style={{
                         left: widget.x,
                         top: widget.y,
                         width: widget.w,
                         height: widget.h,
                       }}
-                      className={`absolute cursor-move group ${
-                        isSelected ? 'ring-2 ring-amber-400 z-20' : 'hover:ring-1 hover:ring-slate-400/60 z-10'
+                      className={`absolute ${
+                        isEditing
+                          ? `cursor-move group ${
+                              isSelected
+                                ? 'ring-2 ring-amber-400 z-20'
+                                : 'hover:ring-1 hover:ring-slate-400/60 z-10'
+                            }`
+                          : 'z-10'
                       }`}
                     >
                       <LcdWidgetRenderer
@@ -1099,16 +1160,18 @@ export function ScreenStudioView({
                         dockerIcons={config.dockerIcons}
                       />
 
-                      <div
-                        onPointerDown={(e) => handleWidgetPointerDown(e, widget, 'resize')}
-                        onClick={(e) => e.stopPropagation()}
-                        title="Drag corner to resize"
-                        className={`absolute right-0 bottom-0 w-4 h-4 cursor-nwse-resize flex items-end justify-end p-0.5 ${
-                          isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-80'
-                        }`}
-                      >
-                        <div className="w-2.5 h-2.5 border-r-2 border-b-2 border-amber-400" />
-                      </div>
+                      {isEditing && (
+                        <div
+                          onPointerDown={(e) => handleWidgetPointerDown(e, widget, 'resize')}
+                          onClick={(e) => e.stopPropagation()}
+                          title="Drag corner to resize"
+                          className={`absolute right-0 bottom-0 w-4 h-4 cursor-nwse-resize flex items-end justify-end p-0.5 ${
+                            isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-80'
+                          }`}
+                        >
+                          <div className="w-2.5 h-2.5 border-r-2 border-b-2 border-amber-400" />
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -1118,16 +1181,26 @@ export function ScreenStudioView({
 
           <div
             onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-[980px] flex items-center justify-between mt-4 pt-3 border-t border-slate-300 dark:border-[#171E2B]"
+            className="w-full max-w-[980px] flex flex-wrap items-center justify-between gap-3 mt-4 pt-3 border-t border-slate-300 dark:border-[#171E2B]"
           >
-            <div className="text-xs text-slate-600 dark:text-slate-400">
-              Dwell: <span className="font-mono text-slate-800 dark:text-slate-200">{activeScreen.durationSec}s</span> ·{' '}
-              {activeScreen.widgets.length} blocks ·{' '}
+            <div className="text-xs text-slate-600 dark:text-slate-400 flex flex-wrap items-center gap-x-2 gap-y-1">
+              <span>
+                Dwell: <span className="font-mono text-slate-800 dark:text-slate-200">{activeScreen.durationSec}s</span> ·{' '}
+                {activeScreen.widgets.length} blocks ·{' '}
+              </span>
               {!activeScreen.enabled ? (
                 <span className="text-amber-700 dark:text-amber-400">Paused (not on rotation)</span>
+              ) : onNavigateToRotationSettings ? (
+                <button
+                  type="button"
+                  onClick={onNavigateToRotationSettings}
+                  className="text-slate-500 hover:text-amber-600 dark:hover:text-amber-400 transition-colors"
+                >
+                  Hardware Auto-Rotate: <span className="font-mono">{config.rotationEnabled ? 'On' : 'Off'}</span> (configure in Settings)
+                </button>
               ) : (
                 <span className="text-slate-500">
-                  Click Push to Screen above to deploy active screens to hardware
+                  Hardware Auto-Rotate: <span className="font-mono">{config.rotationEnabled ? 'On' : 'Off'}</span>
                 </span>
               )}
             </div>
@@ -1154,7 +1227,8 @@ export function ScreenStudioView({
           </div>
         </main>
 
-        {/* Right Drawer: Widget Inspector OR Screen Settings */}
+        {/* Right Drawer: Widget Inspector OR Screen Settings (only in Edit mode) */}
+        {isEditing && (
         <aside
           data-guide="right-inspector"
           className="border-l border-slate-200 dark:border-[#1F2937] bg-white dark:bg-[#0F131C] overflow-y-auto p-4"
@@ -2125,6 +2199,7 @@ export function ScreenStudioView({
             </div>
           )}
         </aside>
+        )}
       </div>
       )}
 

@@ -54,8 +54,8 @@ var PREMADE_SCREENS = [
         type: "clock",
         x: 16,
         y: 16,
-        w: 224,
-        h: 96,
+        w: 300,
+        h: 168,
         title: "System Clock",
         accentColor: "#F59E0B",
         textColor: "#F8FAFC",
@@ -66,43 +66,26 @@ var PREMADE_SCREENS = [
       },
       {
         id: "w-ov-cpu",
-        type: "entity_number",
+        type: "cpu_load",
         x: 16,
-        y: 120,
-        w: 224,
-        h: 112,
+        y: 196,
+        w: 300,
+        h: 164,
         title: "CPU Utilization",
         accentColor: "#F59E0B",
         textColor: "#F8FAFC",
         bgColor: "#0D131D",
         bgOpacity: 0.78,
         borderOpacity: 0.25,
-        fontScale: 1,
-        entityId: "server.cpu_percent"
-      },
-      {
-        id: "w-ov-temp",
-        type: "entity_number",
-        x: 16,
-        y: 240,
-        w: 224,
-        h: 120,
-        title: "CPU Package Temp",
-        accentColor: "#38BDF8",
-        textColor: "#F8FAFC",
-        bgColor: "#0D131D",
-        bgOpacity: 0.78,
-        borderOpacity: 0.25,
-        fontScale: 1,
-        entityId: "server.cpu_temp"
+        fontScale: 1
       },
       {
         id: "w-ov-chart",
         type: "apex_area",
-        x: 248,
+        x: 328,
         y: 16,
-        w: 416,
-        h: 184,
+        w: 364,
+        h: 196,
         title: "CPU & Memory Load",
         accentColor: "#F59E0B",
         textColor: "#F8FAFC",
@@ -115,27 +98,12 @@ var PREMADE_SCREENS = [
         chartSmooth: true
       },
       {
-        id: "w-ov-array",
-        type: "array_status",
-        x: 248,
-        y: 208,
-        w: 416,
-        h: 152,
-        title: "Unraid Array Status",
-        accentColor: "#10B981",
-        textColor: "#F8FAFC",
-        bgColor: "#0D131D",
-        bgOpacity: 0.82,
-        borderOpacity: 0.25,
-        fontScale: 1
-      },
-      {
         id: "w-ov-radial",
         type: "apex_radial",
-        x: 672,
+        x: 704,
         y: 16,
-        w: 272,
-        h: 184,
+        w: 240,
+        h: 196,
         title: "Array Capacity",
         accentColor: "#10B981",
         textColor: "#F8FAFC",
@@ -147,26 +115,25 @@ var PREMADE_SCREENS = [
         binding: "array_percent"
       },
       {
-        id: "w-ov-thermals",
-        type: "entity_list",
-        x: 672,
-        y: 208,
-        w: 272,
-        h: 152,
-        title: "Drive Bay Thermals",
-        accentColor: "#F59E0B",
+        id: "w-ov-array",
+        type: "array_status",
+        x: 328,
+        y: 224,
+        w: 616,
+        h: 136,
+        title: "Unraid Array Status",
+        accentColor: "#10B981",
         textColor: "#F8FAFC",
         bgColor: "#0D131D",
         bgOpacity: 0.82,
         borderOpacity: 0.25,
-        fontScale: 1,
-        entityIds: ["disk.parity1.temp_c", "disk.disk1.temp_c", "disk.disk2.temp_c", "disk.nvme0.temp_c"]
+        fontScale: 1
       }
     ]
   },
   {
     id: "scr-docker-tasks",
-    name: "Dockers, Users & Backups",
+    name: "Dockers, Tasks & Thermals",
     enabled: true,
     durationSec: 15,
     transition: "slide",
@@ -180,8 +147,8 @@ var PREMADE_SCREENS = [
         type: "docker_list",
         x: 16,
         y: 16,
-        w: 448,
-        h: 224,
+        w: 460,
+        h: 344,
         title: "Running Containers",
         accentColor: "#38BDF8",
         textColor: "#F8FAFC",
@@ -189,48 +156,16 @@ var PREMADE_SCREENS = [
         bgOpacity: 0.84,
         borderOpacity: 0.28,
         fontScale: 1,
-        maxItems: 5
-      },
-      {
-        id: "w-dt-users",
-        type: "active_users",
-        x: 16,
-        y: 248,
-        w: 448,
-        h: 112,
-        title: "Connected Users",
-        accentColor: "#10B981",
-        textColor: "#F8FAFC",
-        bgColor: "#0D131D",
-        bgOpacity: 0.84,
-        borderOpacity: 0.28,
-        fontScale: 1,
-        maxItems: 2
-      },
-      {
-        id: "w-dt-tasks",
-        type: "active_tasks",
-        x: 472,
-        y: 16,
-        w: 472,
-        h: 176,
-        title: "Running & Scheduled Tasks",
-        accentColor: "#F59E0B",
-        textColor: "#F8FAFC",
-        bgColor: "#0D131D",
-        bgOpacity: 0.84,
-        borderOpacity: 0.28,
-        fontScale: 1,
-        maxItems: 3
+        maxItems: 7
       },
       {
         id: "w-dt-bar",
         type: "apex_bar",
-        x: 472,
-        y: 200,
-        w: 472,
-        h: 160,
-        title: "Drive Bay Temperatures (C)",
+        x: 488,
+        y: 16,
+        w: 456,
+        h: 184,
+        title: "Drive Bay Temps (\xB0C)",
         accentColor: "#F59E0B",
         textColor: "#F8FAFC",
         bgColor: "#0D131D",
@@ -238,12 +173,28 @@ var PREMADE_SCREENS = [
         borderOpacity: 0.28,
         fontScale: 1,
         entityIds: ["disk.parity1.temp_c", "disk.disk1.temp_c", "disk.disk2.temp_c", "disk.nvme0.temp_c"]
+      },
+      {
+        id: "w-dt-tasks",
+        type: "active_tasks",
+        x: 488,
+        y: 212,
+        w: 456,
+        h: 148,
+        title: "Running & Scheduled Tasks",
+        accentColor: "#F59E0B",
+        textColor: "#F8FAFC",
+        bgColor: "#0D131D",
+        bgOpacity: 0.84,
+        borderOpacity: 0.28,
+        fontScale: 1,
+        maxItems: 2
       }
     ]
   },
   {
     id: "scr-net-gpu",
-    name: "Network, GPU & Power",
+    name: "Network, GPU & Memory",
     enabled: true,
     durationSec: 12,
     transition: "fade",
@@ -253,27 +204,12 @@ var PREMADE_SCREENS = [
     backgroundDim: 0.42,
     widgets: [
       {
-        id: "w-ng-clock",
-        type: "clock",
-        x: 16,
-        y: 16,
-        w: 240,
-        h: 112,
-        title: "Local Time",
-        accentColor: "#F59E0B",
-        textColor: "#F8FAFC",
-        bgColor: "#0D131D",
-        bgOpacity: 0.8,
-        borderOpacity: 0.25,
-        fontScale: 1.05
-      },
-      {
         id: "w-ng-gpu-load",
         type: "entity_number",
-        x: 264,
+        x: 16,
         y: 16,
-        w: 224,
-        h: 112,
+        w: 300,
+        h: 132,
         title: "GPU Utilization",
         accentColor: "#F59E0B",
         textColor: "#F8FAFC",
@@ -286,10 +222,10 @@ var PREMADE_SCREENS = [
       {
         id: "w-ng-gpu-temp",
         type: "entity_number",
-        x: 496,
+        x: 328,
         y: 16,
-        w: 224,
-        h: 112,
+        w: 300,
+        h: 132,
         title: "GPU Temperature",
         accentColor: "#38BDF8",
         textColor: "#F8FAFC",
@@ -302,10 +238,10 @@ var PREMADE_SCREENS = [
       {
         id: "w-ng-cpu-pwr",
         type: "entity_number",
-        x: 728,
+        x: 640,
         y: 16,
-        w: 216,
-        h: 112,
+        w: 304,
+        h: 132,
         title: "CPU Package Power",
         accentColor: "#10B981",
         textColor: "#F8FAFC",
@@ -319,9 +255,9 @@ var PREMADE_SCREENS = [
         id: "w-ng-netchart",
         type: "apex_area",
         x: 16,
-        y: 136,
-        w: 656,
-        h: 224,
+        y: 160,
+        w: 612,
+        h: 200,
         title: "Network Throughput (Mbps)",
         accentColor: "#38BDF8",
         textColor: "#F8FAFC",
@@ -336,10 +272,10 @@ var PREMADE_SCREENS = [
       {
         id: "w-ng-ram",
         type: "apex_radial",
-        x: 680,
-        y: 136,
-        w: 264,
-        h: 224,
+        x: 640,
+        y: 160,
+        w: 304,
+        h: 200,
         title: "Memory Usage %",
         accentColor: "#10B981",
         textColor: "#F8FAFC",
@@ -367,25 +303,25 @@ var PREMADE_SCREENS = [
         id: "w-nc-clock",
         type: "clock",
         x: 24,
-        y: 24,
+        y: 20,
         w: 584,
-        h: 192,
+        h: 208,
         title: "System Time",
         accentColor: "#F59E0B",
         textColor: "#F8FAFC",
         bgColor: "#0E141F",
         bgOpacity: 0.72,
         borderOpacity: 0.2,
-        fontScale: 1.3,
+        fontScale: 1.2,
         fontSizePreset: "lg"
       },
       {
         id: "w-nc-ambient",
         type: "entity_number",
         x: 624,
-        y: 24,
+        y: 20,
         w: 312,
-        h: 92,
+        h: 98,
         title: "CPU Package Temp",
         accentColor: "#38BDF8",
         textColor: "#F8FAFC",
@@ -399,9 +335,9 @@ var PREMADE_SCREENS = [
         id: "w-nc-power",
         type: "entity_number",
         x: 624,
-        y: 124,
+        y: 130,
         w: 312,
-        h: 92,
+        h: 98,
         title: "Power Draw",
         accentColor: "#10B981",
         textColor: "#F8FAFC",
@@ -415,9 +351,9 @@ var PREMADE_SCREENS = [
         id: "w-nc-summary",
         type: "entity_list",
         x: 24,
-        y: 232,
+        y: 240,
         w: 912,
-        h: 120,
+        h: 116,
         title: "Quick Status",
         accentColor: "#F59E0B",
         textColor: "#CBD5E1",
@@ -425,7 +361,8 @@ var PREMADE_SCREENS = [
         bgOpacity: 0.72,
         borderOpacity: 0.2,
         fontScale: 1,
-        entityIds: ["server.cpu_percent", "server.ram_percent", "array.used_percent", "server.ups_load_pct"]
+        maxItems: 3,
+        entityIds: ["server.cpu_percent", "server.ram_percent", "server.array_used_pct"]
       }
     ]
   },
@@ -446,8 +383,8 @@ var PREMADE_SCREENS = [
         type: "apex_bar",
         x: 16,
         y: 16,
-        w: 520,
-        h: 208,
+        w: 516,
+        h: 184,
         title: "Drive Bay Temperatures (C)",
         accentColor: "#38BDF8",
         textColor: "#F8FAFC",
@@ -463,7 +400,7 @@ var PREMADE_SCREENS = [
         x: 544,
         y: 16,
         w: 400,
-        h: 208,
+        h: 184,
         title: "Utilization %",
         accentColor: "#A78BFA",
         textColor: "#F8FAFC",
@@ -477,9 +414,9 @@ var PREMADE_SCREENS = [
         id: "w-nt-area",
         type: "apex_area",
         x: 16,
-        y: 232,
-        w: 616,
-        h: 128,
+        y: 212,
+        w: 612,
+        h: 148,
         title: "CPU Thermal Trend (C)",
         accentColor: "#F59E0B",
         textColor: "#F8FAFC",
@@ -495,9 +432,9 @@ var PREMADE_SCREENS = [
         id: "w-nt-radial",
         type: "apex_radial",
         x: 640,
-        y: 232,
+        y: 212,
         w: 304,
-        h: 128,
+        h: 148,
         title: "Array Space %",
         accentColor: "#38BDF8",
         textColor: "#F8FAFC",
@@ -525,7 +462,7 @@ var PREMADE_SCREENS = [
         type: "docker_list",
         x: 16,
         y: 16,
-        w: 464,
+        w: 460,
         h: 344,
         title: "Running Containers",
         accentColor: "#38BDF8",
@@ -534,7 +471,7 @@ var PREMADE_SCREENS = [
         bgOpacity: 0.85,
         borderOpacity: 0.28,
         fontScale: 1,
-        maxItems: 8
+        maxItems: 6
       },
       {
         id: "w-dn-net",
@@ -542,7 +479,7 @@ var PREMADE_SCREENS = [
         x: 488,
         y: 16,
         w: 456,
-        h: 192,
+        h: 188,
         title: "Network RX / TX (Mbps)",
         accentColor: "#10B981",
         textColor: "#F8FAFC",
@@ -559,7 +496,7 @@ var PREMADE_SCREENS = [
         type: "active_users",
         x: 488,
         y: 216,
-        w: 224,
+        w: 222,
         h: 144,
         title: "Active Users",
         accentColor: "#10B981",
@@ -568,14 +505,14 @@ var PREMADE_SCREENS = [
         bgOpacity: 0.85,
         borderOpacity: 0.28,
         fontScale: 1,
-        maxItems: 4
+        maxItems: 2
       },
       {
         id: "w-dn-tasks",
         type: "active_tasks",
-        x: 720,
+        x: 722,
         y: 216,
-        w: 224,
+        w: 222,
         h: 144,
         title: "Tasks & Backups",
         accentColor: "#F59E0B",
@@ -584,7 +521,7 @@ var PREMADE_SCREENS = [
         bgOpacity: 0.85,
         borderOpacity: 0.28,
         fontScale: 1,
-        maxItems: 3
+        maxItems: 2
       }
     ]
   },
@@ -603,10 +540,10 @@ var PREMADE_SCREENS = [
       {
         id: "w-hw-clock",
         type: "clock",
-        x: 24,
-        y: 24,
-        w: 296,
-        h: 120,
+        x: 20,
+        y: 20,
+        w: 340,
+        h: 136,
         title: "Island Time",
         accentColor: "#FB7185",
         textColor: "#FFF7ED",
@@ -619,10 +556,10 @@ var PREMADE_SCREENS = [
       {
         id: "w-hw-cpu",
         type: "entity_number",
-        x: 336,
-        y: 24,
+        x: 372,
+        y: 20,
         w: 200,
-        h: 120,
+        h: 136,
         title: "CPU Load",
         accentColor: "#FB7185",
         textColor: "#FFF7ED",
@@ -636,10 +573,10 @@ var PREMADE_SCREENS = [
       {
         id: "w-hw-ram",
         type: "entity_number",
-        x: 544,
-        y: 24,
-        w: 200,
-        h: 120,
+        x: 584,
+        y: 20,
+        w: 180,
+        h: 136,
         title: "RAM Usage",
         accentColor: "#F59E0B",
         textColor: "#FFF7ED",
@@ -653,10 +590,10 @@ var PREMADE_SCREENS = [
       {
         id: "w-hw-array",
         type: "apex_radial",
-        x: 752,
-        y: 24,
-        w: 184,
-        h: 120,
+        x: 776,
+        y: 20,
+        w: 164,
+        h: 136,
         title: "Array %",
         accentColor: "#FB7185",
         textColor: "#FFF7ED",
@@ -670,10 +607,10 @@ var PREMADE_SCREENS = [
       {
         id: "w-hw-chart",
         type: "apex_area",
-        x: 24,
-        y: 156,
-        w: 912,
-        h: 196,
+        x: 20,
+        y: 168,
+        w: 920,
+        h: 188,
         title: "Live System Load & Temp",
         accentColor: "#FB7185",
         textColor: "#FFF7ED",
@@ -2727,9 +2664,12 @@ function describeArc(cx, cy, r, startDeg, endDeg) {
 function renderLineAreaSeriesSvg(params) {
   const { x, y, w, h, seriesList, isArea, isSmooth, unit, textColor, uid } = params;
   if (w < 24 || h < 24) return "";
+  const fScale = Math.max(0.75, Math.min(1.35, params.fontScale ?? 1));
+  const labelSize = Number((11.5 * fScale).toFixed(1));
+  const legendSize = Number((11.5 * fScale).toFixed(1));
   const nonEmpty = seriesList.filter((s) => s.data.length > 0);
   if (nonEmpty.length === 0) {
-    return `<text x="${x + w / 2}" y="${y + h / 2 + 4}" text-anchor="middle" font-size="11" fill="#94A3B8">Collecting telemetry samples\u2026</text>`;
+    return `<text x="${x + w / 2}" y="${y + h / 2 + 5}" text-anchor="middle" font-size="${Math.round(13 * fScale)}" fill="#94A3B8">Collecting telemetry\u2026</text>`;
   }
   const allVals = nonEmpty.flatMap((s) => s.data);
   let minV = params.yMinOverride !== void 0 ? params.yMinOverride : Math.min(...allVals);
@@ -2739,11 +2679,11 @@ function renderLineAreaSeriesSvg(params) {
     maxV = maxV + 5;
   }
   const span = Math.max(1e-3, maxV - minV);
-  const legendH = nonEmpty.length > 1 ? 14 : 0;
-  const padLeft = 28;
-  const padRight = 6;
-  const padTop = 6 + legendH;
-  const padBottom = 8;
+  const legendH = nonEmpty.length > 1 ? Math.round(18 * fScale) : 0;
+  const padLeft = Math.round(36 * fScale);
+  const padRight = 8;
+  const padTop = 8 + legendH;
+  const padBottom = 10;
   const plotX = x + padLeft;
   const plotY = y + padTop;
   const plotW = Math.max(16, w - padLeft - padRight);
@@ -2754,12 +2694,12 @@ function renderLineAreaSeriesSvg(params) {
     for (let i = nonEmpty.length - 1; i >= 0; i--) {
       const s = nonEmpty[i];
       const lbl = truncateChars(s.name, 14);
-      const estW = lbl.length * 5.6 + 14;
+      const estW = lbl.length * (legendSize * 0.62) + 18;
       lx -= estW;
       if (lx < x + 4) break;
-      parts.push(`<circle cx="${lx + 4}" cy="${y + 7}" r="3" fill="${safeColor(s.color)}" />`);
+      parts.push(`<circle cx="${lx + 5}" cy="${y + 9}" r="4" fill="${safeColor(s.color)}" />`);
       parts.push(
-        `<text x="${lx + 10}" y="${y + 10}" font-size="9" fill="${textColor}" fill-opacity="0.82">${escapeXml(lbl)}</text>`
+        `<text x="${lx + 13}" y="${y + 13}" font-size="${legendSize}" fill="${textColor}" fill-opacity="0.86">${escapeXml(lbl)}</text>`
       );
     }
   }
@@ -2768,10 +2708,10 @@ function renderLineAreaSeriesSvg(params) {
     const gy = plotY + frac * plotH;
     const valAtLine = Math.round(maxV - frac * span);
     parts.push(
-      `<line x1="${plotX}" y1="${gy.toFixed(1)}" x2="${plotX + plotW}" y2="${gy.toFixed(1)}" stroke="#94A3B8" stroke-opacity="0.18" stroke-dasharray="3 3" stroke-width="1" />`
+      `<line x1="${plotX}" y1="${gy.toFixed(1)}" x2="${plotX + plotW}" y2="${gy.toFixed(1)}" stroke="#94A3B8" stroke-opacity="0.22" stroke-dasharray="3 3" stroke-width="1.2" />`
     );
     parts.push(
-      `<text x="${plotX - 4}" y="${(gy + 3).toFixed(1)}" text-anchor="end" font-size="8.5" fill="#94A3B8">${escapeXml(
+      `<text x="${plotX - 5}" y="${(gy + 4).toFixed(1)}" text-anchor="end" font-size="${labelSize}" fill="#94A3B8">${escapeXml(
         `${valAtLine}${unit}`
       )}</text>`
     );
@@ -2800,12 +2740,12 @@ function renderLineAreaSeriesSvg(params) {
     if (isArea) {
       const gradId = `grad-${uid}-${idx}`;
       parts.push(
-        `<defs><linearGradient id="${gradId}" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="${col}" stop-opacity="0.38" /><stop offset="100%" stop-color="${col}" stop-opacity="0.03" /></linearGradient></defs>`
+        `<defs><linearGradient id="${gradId}" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="${col}" stop-opacity="0.4" /><stop offset="100%" stop-color="${col}" stop-opacity="0.04" /></linearGradient></defs>`
       );
       const areaD = `${lineD} L ${pts[pts.length - 1].x.toFixed(1)} ${(plotY + plotH).toFixed(1)} L ${pts[0].x.toFixed(1)} ${(plotY + plotH).toFixed(1)} Z`;
       parts.push(`<path d="${areaD}" fill="url(#${gradId})" />`);
     }
-    parts.push(`<path d="${lineD}" fill="none" stroke="${col}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />`);
+    parts.push(`<path d="${lineD}" fill="none" stroke="${col}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />`);
   });
   return parts.join("");
 }
@@ -2877,10 +2817,10 @@ function renderWidgetSvg(params) {
   );
   if (w.type === "custom_text") {
     const renderedText = resolveTemplateText(w.customText || w.title, exposedEntities);
-    const fsPx = Math.round(14 * scale);
+    const fsPx = Math.round(18 * scale);
     parts.push(
-      `<text x="${w.x + 12}" y="${w.y + w.h / 2 + fsPx * 0.35}" font-size="${fsPx}" font-weight="600" fill="${textCol}">${escapeXml(
-        truncateChars(renderedText, Math.max(8, Math.floor((w.w - 24) / (fsPx * 0.6))))
+      `<text x="${w.x + 14}" y="${w.y + w.h / 2 + fsPx * 0.36}" font-size="${fsPx}" font-weight="600" fill="${textCol}">${escapeXml(
+        truncateChars(renderedText, Math.max(6, Math.floor((w.w - 28) / (fsPx * 0.62))))
       )}</text>`
     );
     parts.push("</g>");
@@ -2888,14 +2828,16 @@ function renderWidgetSvg(params) {
   }
   if (w.type === "custom_html") {
     const resolved = resolveTemplateText(w.htmlCode || w.title, exposedEntities).replace(/<br\s*\/?>/gi, "\n").replace(/<\/(div|p|li|tr|h\d)>/gi, "\n").replace(/<[^>]+>/g, " ").replace(/[ \t]+/g, " ");
-    const lines = resolved.split("\n").map((l) => l.trim()).filter(Boolean).slice(0, 6);
+    const lines = resolved.split("\n").map((l) => l.trim()).filter(Boolean).slice(0, 5);
     const bodyLines = lines.length > 0 ? lines : [w.title];
+    const htmlScale = Math.min(1.4, scale);
     bodyLines.forEach((line, idx) => {
-      const ly = w.y + 22 + idx * 18;
-      if (ly > w.y + w.h - 6) return;
+      const ly = w.y + 26 + idx * Math.round(24 * htmlScale);
+      if (ly > w.y + w.h - 8) return;
       const isHighlight = idx === 1;
+      const fs8 = Math.round((isHighlight ? 22 : 14) * htmlScale);
       parts.push(
-        `<text x="${w.x + 12}" y="${ly}" font-size="${isHighlight ? 16 : 11}" font-weight="${isHighlight ? 700 : 500}" fill="${isHighlight ? accent : textCol}">${escapeXml(truncateChars(line, 44))}</text>`
+        `<text x="${w.x + 14}" y="${ly}" font-size="${fs8}" font-weight="${isHighlight ? 700 : 500}" fill="${isHighlight ? accent : textCol}">${escapeXml(truncateChars(line, Math.max(10, Math.floor((w.w - 28) / (fs8 * 0.62)))))}</text>`
       );
     });
     parts.push("</g>");
@@ -2905,51 +2847,66 @@ function renderWidgetSvg(params) {
   const boundIds = w.entityIds && w.entityIds.length > 0 ? w.entityIds : w.entityId ? [w.entityId] : [];
   const boundEntities = boundIds.map((id) => exposedEntities.find((e) => e.id === id)).filter((e) => Boolean(e));
   const displayTitle = boundEntity && w.type === "entity_number" ? w.title || boundEntity.tag : w.title;
+  const uiScale = Math.min(1.35, scale);
+  const titleSize = Number((13.5 * Math.min(1.3, scale)).toFixed(1));
+  const titleY = Math.round(w.y + 11 + titleSize * 0.85);
+  const dotY = Math.round(w.y + 11 + titleSize * 0.45);
   parts.push(
-    `<text x="${w.x + 10}" y="${w.y + 18}" font-size="10.5" font-weight="600" fill="${textCol}" fill-opacity="0.76">${escapeXml(
-      truncateChars(displayTitle, Math.max(8, Math.floor((w.w - 30) / 6.2)))
+    `<text x="${w.x + 12}" y="${titleY}" font-size="${titleSize}" font-weight="600" fill="${textCol}" fill-opacity="0.8">${escapeXml(
+      truncateChars(displayTitle, Math.max(6, Math.floor((w.w - 38) / (titleSize * 0.62))))
     )}</text>`
   );
-  parts.push(`<circle cx="${w.x + w.w - 13}" cy="${w.y + 14}" r="3.2" fill="${accent}" />`);
-  const bodyX = w.x + 10;
-  const bodyY = w.y + 28;
-  const bodyW = Math.max(20, w.w - 20);
-  const bodyH = Math.max(16, w.h - 36);
+  parts.push(`<circle cx="${w.x + w.w - 14}" cy="${dotY}" r="4" fill="${accent}" />`);
+  const headerBottom = titleY + 10;
+  const bodyX = w.x + 12;
+  const bodyY = headerBottom;
+  const bodyW = Math.max(24, w.w - 24);
+  const bodyH = Math.max(20, w.y + w.h - headerBottom - 10);
   if (w.type === "entity_number") {
     const valStr = boundEntity ? String(boundEntity.rawValue) : "\u2014";
     const unitStr = boundEntity?.unit ?? "";
     const tagStr = boundEntity?.tag ?? w.entityId ?? "Unbound";
-    const numSize = Math.round((w.h >= 110 ? 28 : 24) * Math.min(1.5, scale));
-    const centerY = bodyY + bodyH * 0.48;
+    const subSize = Math.round(13 * uiScale);
+    const availH = Math.max(24, bodyH - subSize - 6);
+    const baseNum = Math.max(28, Math.min(54, availH * 0.72));
+    const charUnits = Math.max(1.5, valStr.length + (unitStr ? unitStr.length * 0.62 + 0.5 : 0));
+    const maxFitW = bodyW / (charUnits * 0.64);
+    const numSize = Math.round(Math.max(22, Math.min(baseNum * uiScale, maxFitW)));
+    const centerY = bodyY + availH * 0.54 + numSize * 0.34;
     parts.push(
       `<text x="${bodyX}" y="${centerY.toFixed(1)}" font-size="${numSize}" font-weight="700" fill="${accent}">${escapeXml(
         valStr
-      )}${unitStr ? `<tspan font-size="${Math.round(numSize * 0.56)}" font-weight="500" fill="${accent}" fill-opacity="0.88"> ${escapeXml(
+      )}${unitStr ? `<tspan font-size="${Math.round(numSize * 0.55)}" font-weight="600" fill="${accent}" fill-opacity="0.88"> ${escapeXml(
         unitStr
       )}</tspan>` : ""}</text>`
     );
     parts.push(
-      `<text x="${bodyX}" y="${w.y + w.h - 10}" font-size="10" fill="${textCol}" fill-opacity="0.65">${escapeXml(
-        truncateChars(tagStr, Math.max(10, Math.floor(bodyW / 6)))
+      `<text x="${bodyX}" y="${w.y + w.h - 11}" font-size="${subSize}" fill="${textCol}" fill-opacity="0.68">${escapeXml(
+        truncateChars(tagStr, Math.max(8, Math.floor(bodyW / (subSize * 0.62))))
       )}</text>`
     );
   } else if (w.type === "entity_list") {
-    const maxRows = Math.min(w.maxItems ?? 6, Math.max(1, Math.floor(bodyH / 17)));
+    const itemSize = Math.round(Math.max(12.5, Math.min(16, bodyH * 0.145)) * Math.min(1.25, scale));
+    const rowStep = Math.round(itemSize * 1.58);
+    const maxRows = Math.min(w.maxItems ?? 5, Math.max(1, Math.floor((bodyH + 2) / rowStep)));
     if (boundEntities.length === 0) {
       parts.push(
-        `<text x="${bodyX}" y="${bodyY + 14}" font-size="11" fill="${textCol}" fill-opacity="0.6">No bound entities</text>`
+        `<text x="${bodyX}" y="${bodyY + itemSize + 4}" font-size="${itemSize}" fill="${textCol}" fill-opacity="0.6">No bound entities</text>`
       );
     } else {
-      boundEntities.slice(0, maxRows).forEach((ent, idx) => {
-        const ry = bodyY + 13 + idx * 17;
+      const rows = boundEntities.slice(0, maxRows);
+      const startY = bodyY + itemSize + Math.max(0, Math.floor((bodyH - rows.length * rowStep) / 2));
+      rows.forEach((ent, idx) => {
+        const ry = startY + idx * rowStep;
         const valText = `${ent.rawValue}${ent.unit ? ent.unit : ""}`;
+        const valWReserve = valText.length * (itemSize * 0.66) + 12;
         parts.push(
-          `<text x="${bodyX}" y="${ry}" font-size="11" fill="${textCol}" fill-opacity="0.86">${escapeXml(
-            truncateChars(ent.tag, Math.max(8, Math.floor((bodyW - 64) / 6.5)))
+          `<text x="${bodyX}" y="${ry}" font-size="${itemSize}" fill="${textCol}" fill-opacity="0.88">${escapeXml(
+            truncateChars(ent.tag, Math.max(6, Math.floor((bodyW - valWReserve) / (itemSize * 0.62))))
           )}</text>`
         );
         parts.push(
-          `<text x="${w.x + w.w - 10}" y="${ry}" text-anchor="end" font-size="11" font-weight="700" fill="${accent}">${escapeXml(
+          `<text x="${w.x + w.w - 12}" y="${ry}" text-anchor="end" font-size="${itemSize}" font-weight="700" fill="${accent}">${escapeXml(
             valText
           )}</text>`
         );
@@ -2967,40 +2924,49 @@ function renderWidgetSvg(params) {
       month: "short",
       day: "numeric"
     });
-    const clockSize = Math.round((w.w >= 260 && w.h >= 120 ? 34 : 26) * Math.min(1.6, scale));
+    const footerSize = Math.round(13 * uiScale);
+    const availH = Math.max(28, bodyH - footerSize - 8);
+    const maxByWidth = bodyW / 4.95;
+    const maxByHeight = availH * 0.78;
+    const clockSize = Math.round(Math.max(26, Math.min(maxByWidth, Math.min(80, maxByHeight * uiScale))));
+    const clockY = bodyY + availH * 0.52 + clockSize * 0.34;
     parts.push(
-      `<text x="${bodyX}" y="${(bodyY + bodyH * 0.5).toFixed(1)}" font-size="${clockSize}" font-weight="700" fill="${textCol}">${escapeXml(
+      `<text x="${bodyX}" y="${clockY.toFixed(1)}" font-size="${clockSize}" font-weight="700" fill="${textCol}">${escapeXml(
         timeStr
       )}</text>`
     );
     parts.push(
-      `<text x="${bodyX}" y="${w.y + w.h - 10}" font-size="10" fill="${textCol}" fill-opacity="0.72">${escapeXml(
+      `<text x="${bodyX}" y="${w.y + w.h - 11}" font-size="${footerSize}" fill="${textCol}" fill-opacity="0.74">${escapeXml(
         dateStr
       )}</text>`
     );
     parts.push(
-      `<text x="${w.x + w.w - 10}" y="${w.y + w.h - 10}" text-anchor="end" font-size="10" fill="${textCol}" fill-opacity="0.72">UP ${escapeXml(
+      `<text x="${w.x + w.w - 12}" y="${w.y + w.h - 11}" text-anchor="end" font-size="${footerSize}" fill="${textCol}" fill-opacity="0.74">UP ${escapeXml(
         formatUptimeShort(telemetry.system.uptimeSeconds)
       )}</text>`
     );
   } else if (w.type === "cpu_load") {
     const cpuPct = Math.max(0, Math.min(100, telemetry.system.cpuPercent));
+    const heroSize = Math.round(Math.max(26, Math.min(44, bodyH * 0.42)) * uiScale);
+    const metaSize = Math.round(14 * uiScale);
+    const footerSize = Math.round(13 * uiScale);
+    const topY = bodyY + heroSize * 0.9;
     parts.push(
-      `<text x="${bodyX}" y="${bodyY + 22}" font-size="24" font-weight="700" fill="${accent}">${cpuPct}%</text>`
+      `<text x="${bodyX}" y="${topY.toFixed(1)}" font-size="${heroSize}" font-weight="700" fill="${accent}">${cpuPct}%</text>`
     );
     parts.push(
-      `<text x="${w.x + w.w - 10}" y="${bodyY + 20}" text-anchor="end" font-size="11" fill="${textCol}" fill-opacity="0.82">${telemetry.system.cpuTempC}\xB0C \xB7 ${telemetry.system.cpuPowerW}W</text>`
+      `<text x="${w.x + w.w - 12}" y="${(topY - 2).toFixed(1)}" text-anchor="end" font-size="${metaSize}" fill="${textCol}" fill-opacity="0.86">${telemetry.system.cpuTempC}\xB0C \xB7 ${telemetry.system.cpuPowerW}W</text>`
     );
-    const barY = bodyY + 32;
-    parts.push(`<rect x="${bodyX}" y="${barY}" width="${bodyW}" height="6" rx="2" fill="#1E293B" />`);
+    const barY = Math.round(topY + Math.max(10, (w.y + w.h - footerSize - 22 - topY) * 0.45));
+    parts.push(`<rect x="${bodyX}" y="${barY}" width="${bodyW}" height="10" rx="3" fill="#1E293B" />`);
     parts.push(
-      `<rect x="${bodyX}" y="${barY}" width="${Math.round(cpuPct / 100 * bodyW)}" height="6" rx="2" fill="${accent}" />`
-    );
-    parts.push(
-      `<text x="${bodyX}" y="${w.y + w.h - 10}" font-size="10" fill="${textCol}" fill-opacity="0.7">LOAD</text>`
+      `<rect x="${bodyX}" y="${barY}" width="${Math.round(cpuPct / 100 * bodyW)}" height="10" rx="3" fill="${accent}" />`
     );
     parts.push(
-      `<text x="${w.x + w.w - 10}" y="${w.y + w.h - 10}" text-anchor="end" font-size="10" fill="${textCol}" fill-opacity="0.7">${escapeXml(
+      `<text x="${bodyX}" y="${w.y + w.h - 11}" font-size="${footerSize}" fill="${textCol}" fill-opacity="0.72">LOAD</text>`
+    );
+    parts.push(
+      `<text x="${w.x + w.w - 12}" y="${w.y + w.h - 11}" text-anchor="end" font-size="${footerSize}" fill="${textCol}" fill-opacity="0.72">${escapeXml(
         telemetry.system.loadAvg.join(" / ")
       )}</text>`
     );
@@ -3008,24 +2974,28 @@ function renderWidgetSvg(params) {
     const total = Math.max(1, telemetry.system.ramTotalBytes);
     const used = telemetry.system.ramUsedBytes;
     const pct = Math.min(100, Math.max(0, Math.round(used / total * 100)));
+    const heroSize = Math.round(Math.max(24, Math.min(40, bodyH * 0.4)) * uiScale);
+    const metaSize = Math.round(13.5 * uiScale);
+    const footerSize = Math.round(13 * uiScale);
+    const topY = bodyY + heroSize * 0.9;
     parts.push(
-      `<text x="${bodyX}" y="${bodyY + 22}" font-size="22" font-weight="700" fill="${textCol}">${pct}%</text>`
+      `<text x="${bodyX}" y="${topY.toFixed(1)}" font-size="${heroSize}" font-weight="700" fill="${textCol}">${pct}%</text>`
     );
     parts.push(
-      `<text x="${w.x + w.w - 10}" y="${bodyY + 20}" text-anchor="end" font-size="10.5" fill="${textCol}" fill-opacity="0.82">${escapeXml(
+      `<text x="${w.x + w.w - 12}" y="${(topY - 2).toFixed(1)}" text-anchor="end" font-size="${metaSize}" fill="${textCol}" fill-opacity="0.86">${escapeXml(
         `${formatBytesCompact(used, 1)} / ${formatBytesCompact(total, 0)}`
       )}</text>`
     );
-    const barY = bodyY + 32;
-    parts.push(`<rect x="${bodyX}" y="${barY}" width="${bodyW}" height="8" rx="2" fill="#1E293B" />`);
+    const barY = Math.round(topY + Math.max(10, (w.y + w.h - footerSize - 22 - topY) * 0.45));
+    parts.push(`<rect x="${bodyX}" y="${barY}" width="${bodyW}" height="10" rx="3" fill="#1E293B" />`);
     parts.push(
-      `<rect x="${bodyX}" y="${barY}" width="${Math.round(pct / 100 * bodyW)}" height="8" rx="2" fill="${accent}" />`
+      `<rect x="${bodyX}" y="${barY}" width="${Math.round(pct / 100 * bodyW)}" height="10" rx="3" fill="${accent}" />`
     );
     parts.push(
-      `<text x="${bodyX}" y="${w.y + w.h - 10}" font-size="10" fill="${textCol}" fill-opacity="0.7">ARC / Cache</text>`
+      `<text x="${bodyX}" y="${w.y + w.h - 11}" font-size="${footerSize}" fill="${textCol}" fill-opacity="0.72">ARC / Cache</text>`
     );
     parts.push(
-      `<text x="${w.x + w.w - 10}" y="${w.y + w.h - 10}" text-anchor="end" font-size="10" fill="${textCol}" fill-opacity="0.7">${escapeXml(
+      `<text x="${w.x + w.w - 12}" y="${w.y + w.h - 11}" text-anchor="end" font-size="${footerSize}" fill="${textCol}" fill-opacity="0.72">${escapeXml(
         formatBytesCompact(telemetry.system.ramCachedBytes, 1)
       )}</text>`
     );
@@ -3034,128 +3004,150 @@ function renderWidgetSvg(params) {
     const used = telemetry.array.usedBytes;
     const pct = Math.min(100, Math.max(0, Math.round(used / total * 100)));
     const stateColor = telemetry.array.parityValid ? "#10B981" : "#EF4444";
+    const stateSize = Math.round(19 * uiScale);
+    const capSize = Math.round(16 * uiScale);
+    const footerSize = Math.round(13 * uiScale);
+    const topY = bodyY + stateSize + 2;
     parts.push(
-      `<text x="${bodyX}" y="${bodyY + 18}" font-size="14" font-weight="700" fill="${stateColor}">${escapeXml(
+      `<text x="${bodyX}" y="${topY}" font-size="${stateSize}" font-weight="700" fill="${stateColor}">${escapeXml(
         telemetry.array.state
       )}</text>`
     );
     parts.push(
-      `<text x="${w.x + w.w - 10}" y="${bodyY + 18}" text-anchor="end" font-size="12" fill="${textCol}" fill-opacity="0.86">${escapeXml(
+      `<text x="${w.x + w.w - 12}" y="${topY}" text-anchor="end" font-size="${capSize}" font-weight="600" fill="${textCol}" fill-opacity="0.9">${escapeXml(
         `${formatBytesCompact(used, 1)} / ${formatBytesCompact(total, 1)}`
       )}</text>`
     );
-    const barY = bodyY + Math.max(28, bodyH * 0.44);
-    parts.push(`<rect x="${bodyX}" y="${barY}" width="${bodyW}" height="8" rx="2" fill="#1E293B" />`);
+    const barY = Math.round(topY + Math.max(10, (w.y + w.h - footerSize - 22 - topY) * 0.45));
+    parts.push(`<rect x="${bodyX}" y="${barY}" width="${bodyW}" height="11" rx="3" fill="#1E293B" />`);
     parts.push(
-      `<rect x="${bodyX}" y="${barY}" width="${Math.round(pct / 100 * bodyW)}" height="8" rx="2" fill="${accent}" />`
+      `<rect x="${bodyX}" y="${barY}" width="${Math.round(pct / 100 * bodyW)}" height="11" rx="3" fill="${accent}" />`
     );
     parts.push(
-      `<text x="${bodyX}" y="${w.y + w.h - 10}" font-size="10" fill="${textCol}" fill-opacity="0.72">Parity: ${telemetry.array.parityValid ? "Valid" : "Degraded"}</text>`
+      `<text x="${bodyX}" y="${w.y + w.h - 11}" font-size="${footerSize}" fill="${textCol}" fill-opacity="0.74">Parity: ${telemetry.array.parityValid ? "Valid" : "Degraded"}</text>`
     );
     parts.push(
-      `<text x="${w.x + w.w - 10}" y="${w.y + w.h - 10}" text-anchor="end" font-size="10" fill="${textCol}" fill-opacity="0.72">Free: ${escapeXml(
+      `<text x="${w.x + w.w - 12}" y="${w.y + w.h - 11}" text-anchor="end" font-size="${footerSize}" fill="${textCol}" fill-opacity="0.74">Free: ${escapeXml(
         formatBytesCompact(telemetry.array.freeBytes, 1)
       )}</text>`
     );
   } else if (w.type === "docker_list") {
     const running = telemetry.containers.filter((c) => c.state === "running");
-    const maxRows = Math.min(w.maxItems ?? 5, Math.max(1, Math.floor(bodyH / 20)));
+    const itemSize = Math.round(14 * Math.min(1.25, scale));
+    const statSize = Math.round(13 * Math.min(1.25, scale));
+    const rowStep = Math.round(itemSize * 1.85);
+    const iconSize = Math.round(itemSize * 1.28);
+    const maxRows = Math.min(w.maxItems ?? 5, Math.max(1, Math.floor((bodyH + 2) / rowStep)));
     if (running.length === 0) {
       parts.push(
-        `<text x="${bodyX}" y="${bodyY + 16}" font-size="11" fill="${textCol}" fill-opacity="0.6">No running containers</text>`
+        `<text x="${bodyX}" y="${bodyY + 20}" font-size="${itemSize}" fill="${textCol}" fill-opacity="0.6">No running containers</text>`
       );
     } else {
       running.slice(0, maxRows).forEach((c, idx) => {
-        const ry = bodyY + 14 + idx * 20;
+        const ry = bodyY + itemSize + 4 + idx * rowStep;
         const iconData = resolveLocalImageDataUri(dockerIcons[c.name]);
+        const iconY = ry - iconSize + 3;
         if (iconData) {
           parts.push(
-            `<image href="${iconData}" x="${bodyX}" y="${ry - 11}" width="14" height="14" preserveAspectRatio="xMidYMid slice" />`
+            `<image href="${iconData}" x="${bodyX}" y="${iconY}" width="${iconSize}" height="${iconSize}" preserveAspectRatio="xMidYMid slice" />`
           );
         } else {
           parts.push(
-            `<rect x="${bodyX}" y="${ry - 11}" width="14" height="14" rx="2" fill="#94A3B8" fill-opacity="0.2" />`
+            `<rect x="${bodyX}" y="${iconY}" width="${iconSize}" height="${iconSize}" rx="3" fill="#94A3B8" fill-opacity="0.2" />`
           );
           parts.push(
-            `<text x="${bodyX + 7}" y="${ry - 1}" text-anchor="middle" font-size="7.5" font-weight="700" fill="${accent}">${escapeXml(
+            `<text x="${bodyX + iconSize / 2}" y="${ry - 1}" text-anchor="middle" font-size="${Math.round(iconSize * 0.5)}" font-weight="700" fill="${accent}">${escapeXml(
               c.name.slice(0, 2).toUpperCase()
             )}</text>`
           );
         }
+        const statStr = `${c.cpuPercent.toFixed(1)}% \xB7 ${c.memUsedMB}M`;
+        const statReserve = statStr.length * (statSize * 0.64) + iconSize + 18;
         parts.push(
-          `<text x="${bodyX + 20}" y="${ry}" font-size="11" fill="${textCol}" fill-opacity="0.94">${escapeXml(
-            truncateChars(c.name, Math.max(8, Math.floor((bodyW - 110) / 6.5)))
+          `<text x="${bodyX + iconSize + 8}" y="${ry}" font-size="${itemSize}" fill="${textCol}" fill-opacity="0.95">${escapeXml(
+            truncateChars(c.name, Math.max(6, Math.floor((bodyW - statReserve) / (itemSize * 0.62))))
           )}</text>`
         );
         parts.push(
-          `<text x="${w.x + w.w - 10}" y="${ry}" text-anchor="end" font-size="10.5" fill="${textCol}" fill-opacity="0.72">${c.cpuPercent.toFixed(
-            1
-          )}% \xB7 ${c.memUsedMB}M</text>`
+          `<text x="${w.x + w.w - 12}" y="${ry}" text-anchor="end" font-size="${statSize}" fill="${textCol}" fill-opacity="0.74">${statStr}</text>`
         );
       });
     }
   } else if (w.type === "active_tasks") {
-    const tasks = telemetry.tasks.slice(0, w.maxItems ?? 3);
+    const itemSize = Math.round(13.5 * Math.min(1.25, scale));
+    const rowStep = Math.round(itemSize * 2.15);
+    const maxRows = Math.min(w.maxItems ?? 3, Math.max(1, Math.floor((bodyH + 2) / rowStep)));
+    const tasks = telemetry.tasks.slice(0, maxRows);
     if (tasks.length === 0) {
       parts.push(
-        `<text x="${bodyX}" y="${bodyY + 16}" font-size="11" fill="${textCol}" fill-opacity="0.6">No active tasks</text>`
+        `<text x="${bodyX}" y="${bodyY + 20}" font-size="${itemSize}" fill="${textCol}" fill-opacity="0.6">No active tasks</text>`
       );
     } else {
       tasks.forEach((tk, idx) => {
-        const ry = bodyY + 12 + idx * 24;
+        const ry = bodyY + itemSize + 2 + idx * rowStep;
         const pct = tk.status === "running" ? tk.progressPercent : tk.status === "idle" ? 100 : 0;
+        const statusStr = tk.status === "running" ? `${tk.progressPercent}%` : tk.status;
         parts.push(
-          `<text x="${bodyX}" y="${ry}" font-size="10.5" fill="${textCol}" fill-opacity="0.9">${escapeXml(
-            truncateChars(tk.name, Math.max(10, Math.floor((bodyW - 55) / 6)))
+          `<text x="${bodyX}" y="${ry}" font-size="${itemSize}" fill="${textCol}" fill-opacity="0.92">${escapeXml(
+            truncateChars(tk.name, Math.max(8, Math.floor((bodyW - 76) / (itemSize * 0.62))))
           )}</text>`
         );
         parts.push(
-          `<text x="${w.x + w.w - 10}" y="${ry}" text-anchor="end" font-size="10.5" fill="${tk.status === "running" ? accent : "#94A3B8"}">${escapeXml(tk.status === "running" ? `${tk.progressPercent}%` : tk.status)}</text>`
+          `<text x="${w.x + w.w - 12}" y="${ry}" text-anchor="end" font-size="${itemSize}" font-weight="600" fill="${tk.status === "running" ? accent : "#94A3B8"}">${escapeXml(statusStr)}</text>`
         );
-        parts.push(`<rect x="${bodyX}" y="${ry + 4}" width="${bodyW}" height="4" rx="2" fill="#1E293B" />`);
+        parts.push(`<rect x="${bodyX}" y="${ry + 6}" width="${bodyW}" height="6" rx="3" fill="#1E293B" />`);
         parts.push(
-          `<rect x="${bodyX}" y="${ry + 4}" width="${Math.round(Math.min(100, Math.max(0, pct)) / 100 * bodyW)}" height="4" rx="2" fill="${tk.status === "running" ? accent : "#334155"}" />`
+          `<rect x="${bodyX}" y="${ry + 6}" width="${Math.round(Math.min(100, Math.max(0, pct)) / 100 * bodyW)}" height="6" rx="3" fill="${tk.status === "running" ? accent : "#334155"}" />`
         );
       });
     }
   } else if (w.type === "active_users") {
-    const sessions = telemetry.sessions.slice(0, w.maxItems ?? 3);
+    const itemSize = Math.round(13.5 * Math.min(1.25, scale));
+    const rowStep = Math.round(itemSize * 1.7);
+    const maxRows = Math.min(w.maxItems ?? 3, Math.max(1, Math.floor((bodyH + 2) / rowStep)));
+    const sessions = telemetry.sessions.slice(0, maxRows);
     if (sessions.length === 0) {
       parts.push(
-        `<text x="${bodyX}" y="${bodyY + 16}" font-size="11" fill="${textCol}" fill-opacity="0.6">No active SMB/SSH sessions</text>`
+        `<text x="${bodyX}" y="${bodyY + 20}" font-size="${itemSize}" fill="${textCol}" fill-opacity="0.6">No active SMB/SSH sessions</text>`
       );
     } else {
       sessions.forEach((s, idx) => {
-        const ry = bodyY + 13 + idx * 18;
+        const ry = bodyY + itemSize + 3 + idx * rowStep;
+        const rightStr = `${s.protocol} \xB7 ${s.throughputMBps.toFixed(1)} MB/s`;
+        const reserve = rightStr.length * (itemSize * 0.62) + 12;
         parts.push(
-          `<text x="${bodyX}" y="${ry}" font-size="10.5" fill="${textCol}" fill-opacity="0.9">${escapeXml(
-            truncateChars(`${s.username}@${s.clientIp}`, 22)
+          `<text x="${bodyX}" y="${ry}" font-size="${itemSize}" fill="${textCol}" fill-opacity="0.92">${escapeXml(
+            truncateChars(`${s.username}@${s.clientIp}`, Math.max(8, Math.floor((bodyW - reserve) / (itemSize * 0.62))))
           )}</text>`
         );
         parts.push(
-          `<text x="${w.x + w.w - 10}" y="${ry}" text-anchor="end" font-size="10" fill="${textCol}" fill-opacity="0.72">${escapeXml(
-            `${s.protocol} \xB7 ${s.throughputMBps.toFixed(1)} MB/s`
+          `<text x="${w.x + w.w - 12}" y="${ry}" text-anchor="end" font-size="${Math.round(itemSize * 0.92)}" fill="${textCol}" fill-opacity="0.74">${escapeXml(
+            rightStr
           )}</text>`
         );
       });
     }
   } else if (w.type === "disk_thermals") {
-    const disks = telemetry.disks.slice(0, w.maxItems ?? 6);
-    const colW = (bodyW - 12) / 2;
+    const itemSize = Math.round(13.5 * Math.min(1.25, scale));
+    const rowStep = Math.round(itemSize * 1.7);
+    const maxCols = 2;
+    const maxRows = Math.max(1, Math.floor((bodyH + 2) / rowStep));
+    const disks = telemetry.disks.slice(0, Math.min(w.maxItems ?? 6, maxCols * maxRows));
+    const colW = (bodyW - 14) / 2;
     disks.forEach((d, idx) => {
       const col = idx % 2;
       const row = Math.floor(idx / 2);
-      const dx = bodyX + col * (colW + 12);
-      const dy = bodyY + 13 + row * 18;
+      const dx = bodyX + col * (colW + 14);
+      const dy = bodyY + itemSize + 3 + row * rowStep;
       if (dy > w.y + w.h - 6) return;
       const tempCol = d.tempC >= 48 ? "#EF4444" : d.spinState === "standby" ? "#64748B" : "#10B981";
       parts.push(
-        `<text x="${dx}" y="${dy}" font-size="10" fill="${textCol}" fill-opacity="0.86">${escapeXml(
-          truncateChars(d.name, 11)
+        `<text x="${dx}" y="${dy}" font-size="${itemSize}" fill="${textCol}" fill-opacity="0.88">${escapeXml(
+          truncateChars(d.name, Math.max(6, Math.floor((colW - 44) / (itemSize * 0.62))))
         )}</text>`
       );
       parts.push(
-        `<text x="${dx + colW}" y="${dy}" text-anchor="end" font-size="10" font-weight="600" fill="${tempCol}">${d.spinState === "standby" ? "STBY" : `${d.tempC}\xB0C`}</text>`
+        `<text x="${dx + colW}" y="${dy}" text-anchor="end" font-size="${itemSize}" font-weight="700" fill="${tempCol}">${d.spinState === "standby" ? "STBY" : `${d.tempC}\xB0C`}</text>`
       );
     });
   } else if (w.type === "ha_entity") {
@@ -3163,14 +3155,19 @@ function renderWidgetSvg(params) {
     const unit = ha?.attributes.unit_of_measurement ?? "";
     const friendly = ha?.attributes.friendly_name ?? (w.haEntityId || (haEntities.length === 0 ? "Connect Home Assistant" : "Select HA Entity"));
     const valStr = ha ? `${ha.state}${unit ? ` ${unit}` : ""}` : "HA Offline";
+    const subSize = Math.round(13 * uiScale);
+    const availH = Math.max(24, bodyH - subSize - 6);
+    const baseNum = Math.max(24, Math.min(46, availH * 0.68));
+    const maxFitW = bodyW / (Math.max(2, valStr.length) * 0.64);
+    const valSize = Math.round(Math.max(18, Math.min(baseNum * uiScale, maxFitW)));
     parts.push(
-      `<text x="${bodyX}" y="${(bodyY + bodyH * 0.48).toFixed(1)}" font-size="22" font-weight="700" fill="${accent}">${escapeXml(
-        truncateChars(valStr, 18)
+      `<text x="${bodyX}" y="${(bodyY + availH * 0.54 + valSize * 0.34).toFixed(1)}" font-size="${valSize}" font-weight="700" fill="${accent}">${escapeXml(
+        truncateChars(valStr, Math.max(8, Math.floor(bodyW / (valSize * 0.62))))
       )}</text>`
     );
     parts.push(
-      `<text x="${bodyX}" y="${w.y + w.h - 10}" font-size="10" fill="${textCol}" fill-opacity="0.7">${escapeXml(
-        truncateChars(friendly, Math.max(10, Math.floor(bodyW / 6)))
+      `<text x="${bodyX}" y="${w.y + w.h - 11}" font-size="${subSize}" fill="${textCol}" fill-opacity="0.72">${escapeXml(
+        truncateChars(friendly, Math.max(8, Math.floor(bodyW / (subSize * 0.62))))
       )}</text>`
     );
   } else if (w.type === "apex_area") {
@@ -3227,6 +3224,7 @@ function renderWidgetSvg(params) {
         unit,
         textColor: textCol,
         uid,
+        fontScale: uiScale,
         yMinOverride: yMin,
         yMaxOverride: yMax
       })
@@ -3257,8 +3255,8 @@ function renderWidgetSvg(params) {
     }
     const cx = bodyX + bodyW / 2;
     const cy = bodyY + bodyH / 2 + 2;
-    const r = Math.max(18, Math.min(bodyW, bodyH) * 0.42);
-    const strokeW = Math.max(6, Math.round(r * 0.22));
+    const r = Math.max(20, Math.min(bodyW, bodyH) * 0.43);
+    const strokeW = Math.max(9, Math.round(r * 0.24));
     parts.push(
       `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="${r.toFixed(1)}" fill="none" stroke="#94A3B8" stroke-opacity="0.18" stroke-width="${strokeW}" />`
     );
@@ -3271,13 +3269,15 @@ function renderWidgetSvg(params) {
       }
     }
     const centerVal = value === null ? "\u2014" : `${Math.round(value)}${unit}`;
+    const valSize = Math.round(Math.max(22, Math.min(34, r * 0.52)) * Math.min(1.25, scale));
+    const lblSize = Math.round(Math.max(11.5, Math.min(15, r * 0.22)) * Math.min(1.25, scale));
     parts.push(
-      `<text x="${cx.toFixed(1)}" y="${(cy + 3).toFixed(1)}" text-anchor="middle" font-size="18" font-weight="700" fill="${textCol}">${escapeXml(
+      `<text x="${cx.toFixed(1)}" y="${(cy + valSize * 0.14).toFixed(1)}" text-anchor="middle" font-size="${valSize}" font-weight="700" fill="${textCol}">${escapeXml(
         centerVal
       )}</text>`
     );
     parts.push(
-      `<text x="${cx.toFixed(1)}" y="${(cy + 18).toFixed(1)}" text-anchor="middle" font-size="9.5" fill="#94A3B8">${escapeXml(
+      `<text x="${cx.toFixed(1)}" y="${(cy + valSize * 0.14 + lblSize + 5).toFixed(1)}" text-anchor="middle" font-size="${lblSize}" fill="#94A3B8">${escapeXml(
         label
       )}</text>`
     );
@@ -3293,53 +3293,56 @@ function renderWidgetSvg(params) {
     }));
     if (items.length === 0) {
       parts.push(
-        `<text x="${bodyX}" y="${bodyY + 16}" font-size="11" fill="#94A3B8">No bar data available</text>`
+        `<text x="${bodyX}" y="${bodyY + 20}" font-size="${Math.round(13 * uiScale)}" fill="#94A3B8">No bar data available</text>`
       );
     } else {
       const maxVal = Math.max(10, ...items.map((i) => i.val));
       if (w.type === "apex_hbar") {
-        const rowH = Math.min(26, Math.max(16, Math.floor(bodyH / items.length)));
+        const hSize = Math.round(12.5 * Math.min(1.25, scale));
+        const rowH = Math.min(32, Math.max(20, Math.floor(bodyH / items.length)));
         items.forEach((it, idx) => {
           const ry = bodyY + 4 + idx * rowH;
-          const labelW = Math.min(82, Math.round(bodyW * 0.34));
+          const labelW = Math.min(104, Math.round(bodyW * 0.36));
           const trackX = bodyX + labelW;
-          const trackW = Math.max(20, bodyW - labelW - 42);
-          const barW = Math.max(2, Math.round(Math.max(0, it.val) / maxVal * trackW));
+          const trackW = Math.max(20, bodyW - labelW - 52);
+          const barW = Math.max(3, Math.round(Math.max(0, it.val) / maxVal * trackW));
           parts.push(
-            `<text x="${bodyX}" y="${ry + 11}" font-size="9.5" fill="${textCol}" fill-opacity="0.86">${escapeXml(
+            `<text x="${bodyX}" y="${ry + hSize + 2}" font-size="${hSize}" fill="${textCol}" fill-opacity="0.88">${escapeXml(
               it.label
             )}</text>`
           );
           parts.push(
-            `<rect x="${trackX}" y="${ry + 3}" width="${trackW}" height="10" rx="2" fill="#1E293B" />`
+            `<rect x="${trackX}" y="${ry + 3}" width="${trackW}" height="13" rx="3" fill="#1E293B" />`
           );
           parts.push(
-            `<rect x="${trackX}" y="${ry + 3}" width="${barW}" height="10" rx="2" fill="${accent}" />`
+            `<rect x="${trackX}" y="${ry + 3}" width="${barW}" height="13" rx="3" fill="${accent}" />`
           );
           parts.push(
-            `<text x="${w.x + w.w - 10}" y="${ry + 11}" text-anchor="end" font-size="9.5" font-weight="600" fill="${textCol}">${escapeXml(
+            `<text x="${w.x + w.w - 12}" y="${ry + hSize + 2}" text-anchor="end" font-size="${hSize}" font-weight="700" fill="${textCol}">${escapeXml(
               `${Math.round(it.val)}${it.unit}`
             )}</text>`
           );
         });
       } else {
+        const valSize = Math.round(12.5 * Math.min(1.25, scale));
+        const lblSize = Math.round(11.5 * Math.min(1.2, scale));
         const colStep = bodyW / items.length;
-        const barW = Math.max(10, Math.min(44, colStep * 0.56));
-        const chartBaseY = bodyY + bodyH - 16;
-        const maxBarH = Math.max(16, bodyH - 34);
+        const barW = Math.max(14, Math.min(54, colStep * 0.58));
+        const chartBaseY = bodyY + bodyH - (lblSize + 8);
+        const maxBarH = Math.max(16, bodyH - (lblSize + valSize + 18));
         items.forEach((it, idx) => {
           const cx = bodyX + idx * colStep + colStep / 2;
-          const bh = Math.max(2, Math.round(Math.max(0, it.val) / maxVal * maxBarH));
+          const bh = Math.max(3, Math.round(Math.max(0, it.val) / maxVal * maxBarH));
           const bx = cx - barW / 2;
           const by = chartBaseY - bh;
-          parts.push(`<rect x="${bx.toFixed(1)}" y="${by.toFixed(1)}" width="${barW.toFixed(1)}" height="${bh}" rx="2" fill="${accent}" />`);
+          parts.push(`<rect x="${bx.toFixed(1)}" y="${by.toFixed(1)}" width="${barW.toFixed(1)}" height="${bh}" rx="3" fill="${accent}" />`);
           parts.push(
-            `<text x="${cx.toFixed(1)}" y="${(by - 4).toFixed(1)}" text-anchor="middle" font-size="9" font-weight="600" fill="${textCol}">${escapeXml(
+            `<text x="${cx.toFixed(1)}" y="${(by - 5).toFixed(1)}" text-anchor="middle" font-size="${valSize}" font-weight="700" fill="${textCol}">${escapeXml(
               `${Math.round(it.val)}${it.unit}`
             )}</text>`
           );
           parts.push(
-            `<text x="${cx.toFixed(1)}" y="${bodyY + bodyH - 3}" text-anchor="middle" font-size="8.5" fill="#94A3B8">${escapeXml(
+            `<text x="${cx.toFixed(1)}" y="${bodyY + bodyH - 2}" text-anchor="middle" font-size="${lblSize}" fill="#94A3B8">${escapeXml(
               truncateChars(it.label, 8)
             )}</text>`
           );
@@ -3363,20 +3366,21 @@ function renderWidgetSvg(params) {
         const firstVal = typeof parsed.series?.[0] === "number" ? parsed.series[0] : 0;
         const cx = bodyX + bodyW / 2;
         const cy = bodyY + bodyH / 2 + 2;
-        const r = Math.max(18, Math.min(bodyW, bodyH) * 0.42);
+        const r = Math.max(20, Math.min(bodyW, bodyH) * 0.43);
+        const strokeW = Math.max(9, Math.round(r * 0.24));
         parts.push(
-          `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="#94A3B8" stroke-opacity="0.18" stroke-width="8" />`
+          `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="#94A3B8" stroke-opacity="0.18" stroke-width="${strokeW}" />`
         );
         if (firstVal > 0) {
           parts.push(
             `<path d="${describeArc(cx, cy, r, 0, Math.min(100, firstVal) / 100 * 360)}" fill="none" stroke="${safeColor(
               cols[0],
               accent
-            )}" stroke-width="8" stroke-linecap="round" />`
+            )}" stroke-width="${strokeW}" stroke-linecap="round" />`
           );
         }
         parts.push(
-          `<text x="${cx}" y="${cy + 5}" text-anchor="middle" font-size="17" font-weight="700" fill="${textCol}">${Math.round(
+          `<text x="${cx}" y="${cy + 7}" text-anchor="middle" font-size="${Math.round(24 * uiScale)}" font-weight="700" fill="${textCol}">${Math.round(
             firstVal
           )}%</text>`
         );
@@ -3397,13 +3401,14 @@ function renderWidgetSvg(params) {
             isSmooth: parsed.stroke?.curve !== "straight",
             unit: "",
             textColor: textCol,
-            uid
+            uid,
+            fontScale: uiScale
           })
         );
       }
     } catch {
       parts.push(
-        `<text x="${bodyX}" y="${bodyY + 18}" font-size="11" fill="#F87171">Invalid ApexCharts JSON</text>`
+        `<text x="${bodyX}" y="${bodyY + 20}" font-size="13" fill="#F87171">Invalid ApexCharts JSON</text>`
       );
     }
   }
@@ -4437,6 +4442,11 @@ var TestAgentSchema = z.object({
 var TestHaSchema = z.object({
   haUrl: z.string().min(1).max(1024),
   haToken: z.string().max(2048).optional()
+});
+var TestCustomSchema = z.object({
+  url: z.string().min(1).max(1024),
+  token: z.string().max(2048).optional(),
+  jsonPath: z.string().max(256).optional()
 });
 var DeployRequestSchema = z.object({
   screens: z.array(LcdScreenSchema).min(1).max(32).optional(),
@@ -7992,6 +8002,72 @@ function createStudioApp(options) {
       res.json({ ok: true, status: r.status, message: "Connected to Home Assistant API" });
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Unable to reach Home Assistant";
+      const status = msg.includes("SSRF") || msg.includes("blocked") || msg.includes("scheme") ? 403 : 502;
+      res.status(status).json({ ok: false, message: msg });
+    }
+  });
+  app.post("/api/integrations/test-custom", async (req, res) => {
+    const parsed = TestCustomSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ ok: false, message: "Valid HTTP/HTTPS endpoint URL is required." });
+      return;
+    }
+    const { url, token, jsonPath } = parsed.data;
+    try {
+      const headers = { Accept: "application/json" };
+      if (token?.trim()) headers.Authorization = `Bearer ${token.trim()}`;
+      const r = await safeOutboundFetch(url.trim(), {
+        headers,
+        timeoutMs: 2500,
+        maxBytes: DEFAULT_UPSTREAM_MAX_BYTES
+      });
+      if (!r.ok) {
+        res.json({ ok: false, status: r.status, message: `Endpoint responded with HTTP ${r.status}` });
+        return;
+      }
+      const rawText = r.bodyBuffer.toString("utf8");
+      let parsedJson = null;
+      let isJson = false;
+      try {
+        parsedJson = JSON.parse(rawText);
+        isJson = true;
+      } catch {
+        isJson = false;
+      }
+      const suggestedPaths = [];
+      if (isJson && parsedJson && typeof parsedJson === "object") {
+        const collectPaths = (node, prefix, depth) => {
+          if (suggestedPaths.length >= 24 || depth > 3 || !node || typeof node !== "object") return;
+          if (Array.isArray(node)) {
+            if (node.length > 0 && (typeof node[0] === "number" || typeof node[0] === "string")) {
+              suggestedPaths.push({ path: `${prefix}.0`, value: String(node[0]) });
+            }
+            return;
+          }
+          for (const [k, v] of Object.entries(node)) {
+            if (suggestedPaths.length >= 24) break;
+            const nextPath = prefix ? `${prefix}.${k}` : k;
+            if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") {
+              suggestedPaths.push({ path: nextPath, value: String(v).slice(0, 48) });
+            } else if (v && typeof v === "object") {
+              collectPaths(v, nextPath, depth + 1);
+            }
+          }
+        };
+        collectPaths(parsedJson, "", 0);
+      }
+      const extracted = isJson ? getByJsonPath(parsedJson, jsonPath?.trim() || void 0) : rawText.trim().slice(0, 64);
+      const previewValue = extracted !== null ? String(extracted) : isJson ? JSON.stringify(parsedJson).slice(0, 96) : rawText.trim().slice(0, 96);
+      res.json({
+        ok: true,
+        status: r.status,
+        message: extracted !== null ? `Reachable \xB7 Extracted value: ${String(extracted)}` : jsonPath?.trim() ? `Reachable (HTTP ${r.status}), but path "${jsonPath.trim()}" was not found. Pick a key below.` : `Reachable (HTTP ${r.status})`,
+        extractedValue: extracted !== null ? String(extracted) : null,
+        previewValue,
+        suggestedPaths
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Unable to reach custom endpoint";
       const status = msg.includes("SSRF") || msg.includes("blocked") || msg.includes("scheme") ? 403 : 502;
       res.status(status).json({ ok: false, message: msg });
     }

@@ -99,35 +99,57 @@ export async function rasterizeScreenToRgbaBase64(
     ctx.fill();
     ctx.stroke();
 
+    const presetMult =
+      w.fontSizePreset === 'sm'
+        ? 0.85
+        : w.fontSizePreset === 'lg'
+          ? 1.2
+          : w.fontSizePreset === 'xl'
+            ? 1.45
+            : w.fontSizePreset === '2xl'
+              ? 1.75
+              : 1;
+    const scale = Math.max(0.5, Math.min(2.5, (w.fontScale || 1) * presetMult));
+    const uiScale = Math.min(1.35, scale);
+    const titleSize = Number((13.5 * Math.min(1.3, scale)).toFixed(1));
+    const headerBottom = Math.round(w.y + 11 + titleSize * 0.85 + 10);
+
     if (w.type === 'docker_list' && telemetry?.containers) {
-      const running = telemetry.containers.filter((c) => c.state === 'running').slice(0, w.maxItems ?? 5);
-      let rowY = w.y + 34;
+      const itemSize = Math.round(14 * Math.min(1.25, scale));
+      const iconSize = Math.round(itemSize * 1.15);
+      const rowStep = Math.round(itemSize * 1.6);
+      const maxRows = Math.min(w.maxItems ?? 5, Math.max(1, Math.floor((w.h - (headerBottom - w.y) - 8) / rowStep)));
+      const running = telemetry.containers.filter((c) => c.state === 'running').slice(0, maxRows);
+      let rowY = headerBottom + itemSize + 2;
       for (const c of running) {
         const iconUrl = dockerIcons[c.name];
         if (iconUrl) {
           const iconImg = await loadImageSafe(iconUrl);
           if (iconImg) {
-            ctx.drawImage(iconImg, w.x + 10, rowY - 10, 12, 12);
+            ctx.drawImage(iconImg, w.x + 12, rowY - iconSize + 2, iconSize, iconSize);
           }
         }
         ctx.fillStyle = w.textColor;
-        ctx.font = '500 11px "JetBrains Mono", monospace';
-        ctx.fillText(c.name, w.x + (iconUrl ? 26 : 10), rowY, w.w - 90);
-        rowY += 16;
+        ctx.font = `500 ${itemSize}px "JetBrains Mono", monospace`;
+        ctx.fillText(c.name, w.x + (iconUrl ? 18 + iconSize : 12), rowY, w.w - 104);
+        rowY += rowStep;
       }
     }
 
     ctx.fillStyle = '#94A3B8';
-    ctx.font = '600 10px "Public Sans", sans-serif';
-    ctx.fillText(w.title, w.x + 10, w.y + 18, w.w - 28);
+    ctx.font = `600 ${titleSize}px "Public Sans", sans-serif`;
+    ctx.fillText(w.title, w.x + 12, Math.round(w.y + 11 + titleSize * 0.85), w.w - 34);
 
     ctx.fillStyle = w.accentColor;
     ctx.beginPath();
-    ctx.arc(w.x + w.w - 12, w.y + 14, 3, 0, Math.PI * 2);
+    ctx.arc(w.x + w.w - 14, Math.round(w.y + 11 + titleSize * 0.45), 4, 0, Math.PI * 2);
     ctx.fill();
 
+    if (w.type === 'docker_list') continue;
+
+    const valSize = Math.round(Math.max(24, Math.min(42, (w.h - (headerBottom - w.y) - 18) * 0.55)) * uiScale);
     ctx.fillStyle = w.textColor;
-    ctx.font = '700 22px "JetBrains Mono", monospace';
+    ctx.font = `700 ${valSize}px "JetBrains Mono", monospace`;
     let valueText = '';
 
     if (w.type === 'entity_number') {
@@ -169,7 +191,7 @@ export async function rasterizeScreenToRgbaBase64(
       valueText = w.title;
     }
 
-    ctx.fillText(valueText, w.x + 10, w.y + Math.min(w.h - 14, 52), w.w - 20);
+    ctx.fillText(valueText, w.x + 12, Math.min(w.y + w.h - 14, headerBottom + valSize + 6), w.w - 24);
   }
 
   const imageData = ctx.getImageData(0, 0, LCD_WIDTH, LCD_HEIGHT);

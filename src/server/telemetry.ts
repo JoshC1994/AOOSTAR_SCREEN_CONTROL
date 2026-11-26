@@ -2060,7 +2060,7 @@ export async function fetchHomeAssistantEntities(
   };
 }
 
-function getByJsonPath(obj: unknown, dotPath?: string): string | number | null {
+export function getByJsonPath(obj: unknown, dotPath?: string): string | number | null {
   if (!dotPath) {
     if (typeof obj === 'string' || typeof obj === 'number') return obj;
     return null;

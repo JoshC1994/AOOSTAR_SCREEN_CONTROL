@@ -9,6 +9,8 @@ interface ConnectionsViewProps {
   haConnected: boolean;
   onUpdateConfig: (updater: (prev: StudioConfig) => StudioConfig) => void;
   onRefreshAll: () => Promise<void>;
+  embedded?: boolean;
+  onOpenWizard?: (kind?: 'home_assistant' | 'custom_http' | 'host_sensors') => void;
 }
 
 export function ConnectionsView({
@@ -17,6 +19,8 @@ export function ConnectionsView({
   haConnected,
   onUpdateConfig,
   onRefreshAll,
+  embedded = false,
+  onOpenWizard,
 }: ConnectionsViewProps) {
   const [testingHa, setTestingHa] = useState(false);
   const [haStatus, setHaStatus] = useState<{ok: boolean; message: string} | null>(null);
@@ -98,7 +102,7 @@ export function ConnectionsView({
     : null;
 
   return (
-    <div className="max-w-[1280px] mx-auto p-6 space-y-6">
+    <div className={embedded ? 'space-y-6' : 'max-w-[1280px] mx-auto p-6 space-y-6'}>
       {/* Always-On Local Server Telemetry Card */}
       <section
         data-guide="connections-grid"
@@ -108,16 +112,26 @@ export function ConnectionsView({
           <div>
             <h1 className="text-base font-display font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">
               <Server className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-              Local Server Stats (Always Active)
+              Host Collector &amp; Local Integrations
             </h1>
             <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
-              Reads CPU, GPU, memory, drive thermals, Docker containers, active SMB users, and host telemetry directly from your Unraid / Linux host.
+              Reads CPU, GPU, memory, drive thermals, Docker containers, and host telemetry directly from your Linux / Unraid Docker host.
             </p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2.5">
             <span className="text-xs font-mono text-emerald-600 dark:text-emerald-400">
               {telemetry?.sourceLabel || 'Collector Active'}
             </span>
+            {onOpenWizard && (
+              <button
+                type="button"
+                onClick={() => onOpenWizard()}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded bg-amber-500 text-slate-950 hover:bg-amber-400 text-xs font-semibold transition-colors whitespace-nowrap"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Connection Wizard
+              </button>
+            )}
             <button
               onClick={() => void onRefreshAll()}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded border border-slate-300 dark:border-[#263042] bg-slate-100 dark:bg-[#141A26] text-xs text-slate-800 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-[#1C2436]"

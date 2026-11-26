@@ -1166,6 +1166,12 @@ export const TestHaSchema = z.object({
   haToken: z.string().max(2048).optional(),
 });
 
+export const TestCustomSchema = z.object({
+  url: z.string().min(1).max(1024),
+  token: z.string().max(2048).optional(),
+  jsonPath: z.string().max(256).optional(),
+});
+
 export const DeployRequestSchema = z.object({
   screens: z.array(LcdScreenSchema).min(1).max(32).optional(),
   rgbaBase64: z.string().max(4 * 1024 * 1024).optional(),

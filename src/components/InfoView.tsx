@@ -1,4 +1,4 @@
-import {BookOpen, Monitor, Moon, Sun} from 'lucide-react';
+import {BookOpen, Coffee, Monitor, Moon, Rocket, ShieldCheck, Sun} from 'lucide-react';
 import type {UiThemePreference} from '../types.ts';
 
 interface InfoViewProps {
@@ -23,7 +23,7 @@ export function InfoView({onOpenGuide, uiTheme, onChangeUiTheme}: InfoViewProps)
               Aoostar Display Studio
             </h1>
             <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
-              Local-first Unraid Docker utility &amp; 960×376 secondary LCD studio for Aoostar NAS hardware.
+              Open-source, local-first Docker display studio for Aoostar 960×376 USB-UART secondary NAS screens.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
@@ -78,9 +78,9 @@ export function InfoView({onOpenGuide, uiTheme, onChangeUiTheme}: InfoViewProps)
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-          <div className="p-4 rounded bg-slate-50 dark:bg-[#0B0E14] border border-slate-200 dark:border-[#1F2937]">
+          <div className="p-4 rounded bg-slate-50 dark:bg-[#0B0E14] border border-slate-200 dark:border-[#1F2937] space-y-2">
             <div className="text-slate-500 dark:text-slate-400">Created &amp; Maintained By</div>
-            <div className="text-sm font-semibold text-slate-900 dark:text-slate-100 mt-1">
+            <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">
               <a
                 href="https://github.com/JoshC1994/AOOSTAR_SCREEN_CONTROL"
                 target="_blank"
@@ -90,20 +90,45 @@ export function InfoView({onOpenGuide, uiTheme, onChangeUiTheme}: InfoViewProps)
                 JoshC1994 · AOOSTAR_SCREEN_CONTROL
               </a>
             </div>
-            <div className="text-slate-600 dark:text-slate-400 mt-1">
-              Designed for Unraid Community Applications Docker containers.
+            <p className="text-slate-600 dark:text-slate-400 leading-relaxed">
+              Designed for Unraid and standard Linux Docker hosts with automatic permission setup and non-root runtime isolation.
+            </p>
+            <div className="pt-1">
+              <a
+                href="https://buymeacoffee.com/M50wCmpncp"
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded bg-amber-500 text-slate-950 hover:bg-amber-400 text-xs font-semibold transition-colors"
+              >
+                <Coffee className="w-3.5 h-3.5" />
+                Buy Me a Coffee
+              </a>
             </div>
           </div>
 
-          <div className="p-4 rounded bg-slate-50 dark:bg-[#0B0E14] border border-slate-200 dark:border-[#1F2937]">
-            <div className="text-slate-500 dark:text-slate-400">Privacy &amp; Security Posture</div>
-            <div className="text-sm font-semibold text-emerald-600 dark:text-emerald-400 mt-1">
-              100% Local Execution
+          <div className="p-4 rounded bg-slate-50 dark:bg-[#0B0E14] border border-slate-200 dark:border-[#1F2937] space-y-1.5">
+            <div className="text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
+              Security &amp; Open-Source Posture
             </div>
-            <div className="text-slate-600 dark:text-slate-400 mt-1">
-              Replaces proprietary OEM Windows software. Zero cloud connections, zero outbound telemetry.
+            <div className="text-sm font-semibold text-emerald-600 dark:text-emerald-400">
+              100% Local · Auditable Source
             </div>
+            <p className="text-slate-600 dark:text-slate-400 leading-relaxed">
+              Built to replace closed-source OEM Windows display software that raises privacy and security concerns. Runs completely locally in Docker with salted credential hashing, strict CSRF/Host guards, and zero outbound cloud telemetry.
+            </p>
           </div>
+        </div>
+
+        {/* Platform & Next Stage Roadmap */}
+        <div className="p-4 rounded bg-slate-50 dark:bg-[#0B0E14] border border-slate-200 dark:border-[#1F2937] space-y-2 text-xs">
+          <div className="font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+            <Rocket className="w-3.5 h-3.5 text-sky-500" />
+            Platform Compatibility &amp; Next Stage
+          </div>
+          <p className="text-slate-600 dark:text-slate-400 leading-relaxed">
+            Runs natively on <strong className="text-slate-800 dark:text-slate-200">Unraid</strong> and standard <strong className="text-slate-800 dark:text-slate-200">Linux Docker / Compose</strong> hosts with USB passthrough (<code className="font-mono">/dev/ttyACM0</code>). Because it is packaged as a standard non-root OCI container, <strong className="text-slate-800 dark:text-slate-200">TrueNAS SCALE</strong> and wider NAS container platforms can run the same image—dedicated TrueNAS SCALE custom app templates, ZFS pool collectors, and expanded multi-NAS presets are planned for the next stage.
+          </p>
         </div>
 
         <div className="space-y-3 pt-2 border-t border-slate-200 dark:border-[#1F2937]">
@@ -112,13 +137,21 @@ export function InfoView({onOpenGuide, uiTheme, onChangeUiTheme}: InfoViewProps)
           </h2>
           <ul className="space-y-2 text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
             <li>
-              <span className="font-semibold text-slate-900 dark:text-slate-100">zehnm/aoostar-rs</span> — Reverse-engineering the Aoostar WTR MAX &amp; GEM12+ PRO secondary USB-UART display protocol (`VID 0x0416`, `PID 0x90A1`, 960×376 RGB565 framing).
+              <a
+                href="https://github.com/zehnm/aoostar-rs"
+                target="_blank"
+                rel="noreferrer"
+                className="font-semibold text-amber-600 dark:text-amber-400 hover:underline"
+              >
+                zehnm / aoostar-rs
+              </a>{' '}
+              — Huge shoutout to <span className="font-semibold text-slate-900 dark:text-slate-100">zehnm</span> for reverse-engineering and documenting the Aoostar WTR MAX &amp; GEM12+ PRO secondary USB-UART display protocol (<code className="font-mono">VID 0x0416</code>, <code className="font-mono">PID 0x90A1</code>, 960×376 RGB565 LE framing).
             </li>
             <li>
-              <span className="font-semibold text-slate-900 dark:text-slate-100">ApexCharts</span> — Interactive charting engine powering real-time graphs, gauges, and custom user-coded screen visualizations.
+              <span className="font-semibold text-slate-900 dark:text-slate-100">ApexCharts</span> — Interactive charting engine powering real-time graphs, gauges, and custom screen visualizations.
             </li>
             <li>
-              <span className="font-semibold text-slate-900 dark:text-slate-100">Unraid Community</span> — Feedback, plugin standards, and Community Applications ecosystem.
+              <span className="font-semibold text-slate-900 dark:text-slate-100">Self-Hosted &amp; Unraid Community</span> — Hardware testing, feedback, and Community Applications support.
             </li>
           </ul>
         </div>

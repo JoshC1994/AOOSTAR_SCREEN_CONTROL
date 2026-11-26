@@ -1,7 +1,7 @@
 import {useCallback, useEffect, useLayoutEffect, useRef, useState} from 'react';
 import {ChevronLeft, ChevronRight, X} from 'lucide-react';
 
-export type GuideTab = 'screens' | 'saved' | 'entities' | 'connections' | 'settings' | 'info';
+export type GuideTab = 'screens' | 'saved' | 'entities' | 'settings' | 'info';
 
 interface QuickGuideModalProps {
   open: boolean;
@@ -26,44 +26,29 @@ const GUIDE_STEPS: GuideStep[] = [
     tab: 'screens',
     targetSelector: '[data-guide="add-screen-btn"]',
     preferredSide: 'bottom',
-    areaLabel: 'Screens Toolbar · Add Screen',
-    title: 'Create or Load a Screen',
+    areaLabel: 'Screens · Add or Preview',
+    title: 'Clean Preview, Test Rotate & Screen Creation',
     summary:
-      'Click + Add Screen to choose Blank, load from Saved Screens, or start from one of the ready-made Templates.',
+      'Screens opens in a clean display preview. Switch screens above, preview cycling with Test Rotate, or click + Add Screen.',
     bullets: [
-      'Blank gives you an empty 960×376 canvas.',
-      'Saved reuses any layout you previously saved.',
-      'Templates lets you pick pre-built dashboard, thermal, Docker, or Home Assistant layouts.',
+      'Blank starts an empty 960×376 canvas; Saved reuses any layout from your library.',
+      'Templates loads ready-made telemetry, Docker, thermal, or Home Assistant screens.',
+      'Test Rotate previews cycling in-browser without changing hardware Auto-Rotate settings.',
     ],
   },
   {
-    id: 'left-drawer',
+    id: 'edit-layout',
     tab: 'screens',
-    targetSelector: '[data-guide="left-drawer"]',
-    preferredSide: 'right',
-    areaLabel: 'Left Drawer · Blocks, Themes & Media Library',
-    title: 'Add Blocks, Themes & Media',
+    targetSelector: '[data-guide="edit-layout-btn"]',
+    preferredSide: 'bottom',
+    areaLabel: 'Screens · Edit Toggle',
+    title: 'Reveal Blocks, Themes & Block Inspector',
     summary:
-      'Drag or click blocks onto the screen, switch screen color palettes, or manage GIFs, images, and MP4/WebM loops.',
+      'Editing tools stay tucked away until needed. Click Edit to open the left Blocks/Themes/Media drawer and right Inspector.',
     bullets: [
-      'Blocks: Numbers, Line/Area Graphs, Gauges, Bars, Media, Custom HTML, and ApexCharts.',
-      'Themes: One-click screen color palettes and backdrops.',
-      'Media Library: Import, rename, or remove GIFs/images—they automatically appear in Image blocks and Block Backgrounds.',
-    ],
-  },
-  {
-    id: 'canvas-inspector',
-    tab: 'screens',
-    targetSelector: '[data-guide="right-inspector"]',
-    preferredSide: 'left',
-    areaLabel: 'Canvas & Right Inspector',
-    title: 'Customize Blocks & Entities',
-    summary:
-      'Click any block on the 960×376 LCD canvas to inspect and customize it here on the right.',
-    bullets: [
-      'Assign any exposed server, GPU, or Home Assistant entity.',
-      'Adjust highlight/background/text colors (swatches or color wheel), fonts, sizes, or block background images.',
-      'Drag corners on the canvas to resize or drag the block to reposition.',
+      'Drag blocks onto the canvas or click any block to bind entities, colors, fonts, or graphs.',
+      'Upload custom PNG, JPG, GIF, or MP4/WebM loops inside Media Library.',
+      'Click Done Editing when finished to return to the uncluttered display preview.',
     ],
   },
   {
@@ -74,54 +59,40 @@ const GUIDE_STEPS: GuideStep[] = [
     areaLabel: 'Saved Screens Tab',
     title: 'Pause, Resume, Edit or Delete Screens',
     summary:
-      'All playlist and saved screens live in one place. Pausing a screen immediately removes it from rotation.',
+      'All active rotation and library screens live here. Pausing a screen removes it from rotation without deleting it.',
     bullets: [
-      'Toggle Active / Paused to control which screens rotate on your Aoostar display.',
-      'Click Edit to jump back to the designer for that screen.',
-      'Unsaved edits prompt you to save before deleting, switching tabs, or pushing.',
+      'Toggle Active / Paused to pick which screens cycle on your LCD.',
+      'Click Edit to open that screen directly in Edit mode.',
     ],
   },
   {
     id: 'entities',
     tab: 'entities',
-    targetSelector: '[data-guide="entities-table"]',
-    preferredSide: 'top',
-    areaLabel: 'Entities Tab',
-    title: 'Exposed CPU, GPU, Storage & HA Entities',
+    targetSelector: '[data-guide="add-connection-btn"]',
+    preferredSide: 'bottom',
+    areaLabel: 'Entities & Connections Tab',
+    title: 'Connect Sources & Build Graphs Effortlessly',
     summary:
-      'Inspect live host values, customize tag names or units, and place any metric onto your active screen in one click.',
+      'Add Home Assistant or custom HTTP/JSON endpoints with the guided wizard, then place numbers, gauges, or multi-entity graphs in one click.',
     bullets: [
-      'Real Unraid CPU, GPU, memory, array, and drive temperatures appear automatically.',
-      'Rename any Tag or Unit to change how it displays across screens.',
-      'Use Number, Graph, or Gauge buttons on any row to add a bound block.',
-    ],
-  },
-  {
-    id: 'connections',
-    tab: 'connections',
-    targetSelector: '[data-guide="connections-grid"]',
-    preferredSide: 'top',
-    areaLabel: 'Connections Tab',
-    title: 'Local Server Stats, Home Assistant & HTTP Sources',
-    summary:
-      'Host hardware telemetry runs continuously; add Home Assistant or any local JSON endpoint for extra metrics.',
-    bullets: [
-      'Enter your Home Assistant URL and Long-Lived Access Token to expose HA sensors.',
-      'Add local HTTP/JSON sources (Pi-hole, Tautulli, Solar, UPS) using any JSON path.',
+      'Click + Add Connection to connect Home Assistant or inspect any JSON URL interactively.',
+      'Rename entity tags or units inline and pick which Screen to place them on.',
+      'Check multiple numeric entities and click Build Area Graph or Build Bar Chart.',
     ],
   },
   {
     id: 'settings',
     tab: 'settings',
-    targetSelector: '[data-guide="settings-hardware"]',
-    preferredSide: 'top',
-    areaLabel: 'Settings Tab · USB Display & Schedule',
-    title: 'Brightness, Sleep & USB Serial Target',
+    targetSelector: '[data-guide="settings-tab-screens"]',
+    preferredSide: 'bottom',
+    areaLabel: 'Settings & Diagnostics Tab',
+    title: 'Rotation, Connections, Hardware, Security & Diagnostics',
     summary:
-      'Set screen dwell times, brightness, 0°/180° orientation, overnight sleep schedules, and the Aoostar USB port.',
+      'Settings is organized into clean sections so everyday controls stay simple while full hardware diagnostics remain one click away.',
     bullets: [
-      'Assign custom icons to Docker containers for the Docker list block.',
-      'Verify your Aoostar USB-UART device (/dev/ttyACM0, VID 0x0416 PID 0x90A1) and last frame checksum.',
+      'Screens & Rotation controls real hardware Auto-Rotate, dwell seconds, and transitions.',
+      'Entities & Connections lets you add, test, or remove integrations anytime.',
+      'Display & Hardware, Security, and Diagnostics cover brightness, credentials, Dry Run, and TX/RX logs.',
     ],
   },
   {
@@ -130,12 +101,12 @@ const GUIDE_STEPS: GuideStep[] = [
     targetSelector: '[data-guide="push-screen-btn"]',
     preferredSide: 'bottom',
     areaLabel: 'Top Header · Push to Screen',
-    title: 'Deploy Once to the Hardware Daemon',
+    title: 'Deploy to the Physical Display',
     summary:
-      'Click Push to Screen to initialize the 960×376 Aoostar LCD (0xAA 0x55 protocol) and start autonomous updates.',
+      'Click Push to Screen to send your active screens to the 960×376 Aoostar USB-UART LCD and keep live updates running automatically.',
     bullets: [
-      'The background daemon keeps refreshing live telemetry and rotating screens even when no browser is open.',
-      'You can reopen this guide or switch Dark / Light / System UI theme anytime from the Info tab.',
+      'Runs 100% locally in Docker—live updates and rotation continue even after closing the browser.',
+      'Switch Dark / Light / System UI themes or view credits anytime in the Info tab.',
     ],
   },
 ];

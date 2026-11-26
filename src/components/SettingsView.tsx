@@ -1,12 +1,15 @@
 import {useEffect, useRef, useState} from 'react';
 import {
+  Activity,
   AlertTriangle,
   Clock,
   Container,
+  Globe,
   Lock,
   Moon,
   Power,
   RefreshCw,
+  ShieldCheck,
   Sun,
   Trash2,
   Unlock,
@@ -16,17 +19,27 @@ import {
 import {PRESET_BACKGROUNDS} from '../presets.ts';
 import type {AuthStatusResponse, DetectedUsbDevice, LastFrameMeta, StudioConfig, TelemetrySnapshot} from '../types.ts';
 import {apiFetch} from '../utils/apiClient.ts';
+import {AddConnectionWizardModal} from './AddConnectionWizardModal.tsx';
+import {ConnectionsView} from './ConnectionsView.tsx';
+import {DiagnosticsView} from './DiagnosticsView.tsx';
 import {SecuritySettingsPanel} from './SecuritySettingsPanel.tsx';
+
+export type SettingsSection = 'screens' | 'connections' | 'hardware' | 'security' | 'diagnostics';
 
 interface SettingsViewProps {
   config: StudioConfig;
   telemetry: TelemetrySnapshot | null;
+  haConnected: boolean;
   lastFrame: LastFrameMeta | null;
   onUpdateConfig: (updater: (prev: StudioConfig) => StudioConfig) => void;
+  onRefreshAll: () => Promise<void>;
+  onRefreshDiagnostics: () => void;
+  onNavigateToEntities?: () => void;
   authStatus: AuthStatusResponse | null;
   onAuthStatusChanged: () => Promise<void> | void;
   onSignedOut: () => void;
   focusSecurityCounter?: number;
+  focusSection?: {section: SettingsSection; counter: number} | null;
 }
 
 const POLL_OPTIONS = [
@@ -45,16 +58,32 @@ const BRIGHTNESS_PRESETS = [
 
 const QUICK_SCREEN_SECONDS = [10, 15, 30, 60];
 
+const SETTINGS_SECTIONS: Array<{id: SettingsSection; label: string; Icon: typeof Clock}> = [
+  {id: 'screens', label: 'Screens & Rotation', Icon: Clock},
+  {id: 'connections', label: 'Entities & Connections', Icon: Globe},
+  {id: 'hardware', label: 'Display & Hardware', Icon: Usb},
+  {id: 'security', label: 'Security', Icon: ShieldCheck},
+  {id: 'diagnostics', label: 'Diagnostics', Icon: Activity},
+];
+
 export function SettingsView({
   config,
   telemetry,
+  haConnected,
   lastFrame,
   onUpdateConfig,
+  onRefreshAll,
+  onRefreshDiagnostics,
+  onNavigateToEntities,
   authStatus,
   onAuthStatusChanged,
   onSignedOut,
   focusSecurityCounter = 0,
+  focusSection = null,
 }: SettingsViewProps) {
+  const [activeSection, setActiveSection] = useState<SettingsSection>('screens');
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const [wizardKind, setWizardKind] = useState<'home_assistant' | 'custom_http' | 'host_sensors' | null>(null);
   const [devices, setDevices] = useState<DetectedUsbDevice[]>([]);
   const [frameMeta, setFrameMeta] = useState<LastFrameMeta | null>(lastFrame);
   const [serialWritesActive, setSerialWritesActive] = useState(false);
@@ -103,11 +132,22 @@ export function SettingsView({
 
   useEffect(() => {
     if (focusSecurityCounter <= 0) return;
+    setActiveSection('security');
     setHighlightSecurity(true);
-    securitySectionRef.current?.scrollIntoView({behavior: 'smooth', block: 'start'});
+    const scrollTimer = window.setTimeout(() => {
+      securitySectionRef.current?.scrollIntoView({behavior: 'smooth', block: 'start'});
+    }, 50);
     const timer = window.setTimeout(() => setHighlightSecurity(false), 3000);
-    return () => window.clearTimeout(timer);
+    return () => {
+      window.clearTimeout(scrollTimer);
+      window.clearTimeout(timer);
+    };
   }, [focusSecurityCounter]);
+
+  useEffect(() => {
+    if (!focusSection || focusSection.counter <= 0) return;
+    setActiveSection(focusSection.section);
+  }, [focusSection]);
 
   const handleDisplayCommand = async (endpoint: '/api/display/on' | '/api/display/off' | '/api/hardware/force-refresh', label: string) => {
     setBusyHwAction(true);
@@ -213,26 +253,91 @@ export function SettingsView({
 
   return (
     <div className="max-w-[1280px] mx-auto p-6 space-y-6">
-      <div className="rounded-lg border border-slate-200 dark:border-[#1F2937] bg-white dark:bg-[#0F131C] p-5 shadow-xs dark:shadow-none">
-        <h1 className="text-lg font-display font-semibold text-slate-900 dark:text-slate-100">
-          Display, Security &amp; Hardware Settings
-        </h1>
-        <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
-          Manage Studio login credentials, script API tokens, screen cycle times, brightness, sleep hours, and USB display target.
-        </p>
+      <div className="rounded-lg border border-slate-200 dark:border-[#1F2937] bg-white dark:bg-[#0F131C] p-5 space-y-4 shadow-xs dark:shadow-none">
+        <div>
+          <h1 className="text-lg font-display font-semibold text-slate-900 dark:text-slate-100">
+            Settings &amp; Diagnostics
+          </h1>
+          <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
+            Configure hardware rotation, external data connections, display brightness, local credentials, and USB serial diagnostics.
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-1.5 pt-3 border-t border-slate-200 dark:border-[#1F2937]">
+          {SETTINGS_SECTIONS.map(({id, label, Icon}) => {
+            const active = activeSection === id;
+            return (
+              <button
+                key={id}
+                type="button"
+                data-guide={`settings-tab-${id}`}
+                onClick={() => setActiveSection(id)}
+                className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-md text-xs font-medium border transition-colors whitespace-nowrap shrink-0 ${
+                  active
+                    ? 'bg-amber-500 border-amber-500 text-slate-950 font-semibold'
+                    : 'bg-slate-50 dark:bg-[#0B0E14] border-slate-200 dark:border-[#263042] text-slate-700 dark:text-slate-300 hover:border-amber-500/60'
+                }`}
+              >
+                <Icon className="w-3.5 h-3.5" />
+                {label}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
-      {/* Security & Access */}
-      <div ref={securitySectionRef}>
-        <SecuritySettingsPanel
-          authStatus={authStatus}
-          onAuthStatusChanged={onAuthStatusChanged}
-          onSignedOut={onSignedOut}
-          highlightSection={highlightSecurity}
-        />
-      </div>
+      {/* Subsection: Security */}
+      {activeSection === 'security' && (
+        <div ref={securitySectionRef}>
+          <SecuritySettingsPanel
+            authStatus={authStatus}
+            onAuthStatusChanged={onAuthStatusChanged}
+            onSignedOut={onSignedOut}
+            highlightSection={highlightSecurity}
+          />
+        </div>
+      )}
 
-      {/* Section 1: Display Times & Refresh */}
+      {/* Subsection: Entities & Connections */}
+      {activeSection === 'connections' && (
+        <div className="space-y-5">
+          {onNavigateToEntities && (
+            <div className="rounded-lg border border-slate-200 dark:border-[#1F2937] bg-white dark:bg-[#0F131C] px-5 py-3.5 flex flex-wrap items-center justify-between gap-3">
+              <div className="text-xs text-slate-600 dark:text-slate-400">
+                Rename entity labels, customize units, or build multi-entity graphs in the <strong className="text-slate-900 dark:text-slate-100">Entities</strong> tab.
+              </div>
+              <button
+                type="button"
+                onClick={onNavigateToEntities}
+                className="px-3 py-1.5 rounded border border-slate-300 dark:border-[#263042] bg-slate-100 dark:bg-[#141A26] text-xs font-medium text-slate-800 dark:text-slate-200 hover:border-amber-500/60"
+              >
+                Open Entities Registry
+              </button>
+            </div>
+          )}
+
+          <ConnectionsView
+            embedded
+            config={config}
+            telemetry={telemetry}
+            haConnected={haConnected}
+            onUpdateConfig={onUpdateConfig}
+            onRefreshAll={onRefreshAll}
+            onOpenWizard={(kind) => {
+              setWizardKind(kind ?? null);
+              setWizardOpen(true);
+            }}
+          />
+        </div>
+      )}
+
+      {/* Subsection: Diagnostics */}
+      {activeSection === 'diagnostics' && (
+        <DiagnosticsView embedded onRefreshParent={onRefreshDiagnostics} />
+      )}
+
+      {/* Subsection: Screens & Rotation */}
+      {activeSection === 'screens' && (
       <section className="rounded-lg border border-slate-200 dark:border-[#1F2937] bg-white dark:bg-[#0F131C] p-5 space-y-5 shadow-xs dark:shadow-none">
         <div className="flex flex-wrap items-center justify-between gap-4 pb-3 border-b border-slate-200 dark:border-[#1F2937]">
           <div>
@@ -416,7 +521,11 @@ export function SettingsView({
           </table>
         </div>
       </section>
+      )}
 
+      {/* Subsection: Display & Hardware (Sections 2, 3, 4) */}
+      {activeSection === 'hardware' && (
+      <>
       {/* Section 2: Brightness, Orientation & Sleep Schedule */}
       <section className="rounded-lg border border-slate-200 dark:border-[#1F2937] bg-white dark:bg-[#0F131C] p-5 space-y-5 shadow-xs dark:shadow-none">
         <div className="pb-3 border-b border-slate-200 dark:border-[#1F2937]">
@@ -827,7 +936,7 @@ export function SettingsView({
               </div>
             ) : (
               <div className="text-xs text-slate-500 dark:text-slate-400">
-                No USB-UART display detected. On Unraid, verify <code className="font-mono">--device=/dev/ttyACM0</code> or container privileged mode is active.
+                No USB-UART display detected. Verify <code className="font-mono">--device=/dev/ttyACM0</code> is passed to your Docker container.
               </div>
             )}
           </div>
@@ -974,6 +1083,18 @@ export function SettingsView({
           </div>
         )}
       </section>
+      </>
+      )}
+
+      <AddConnectionWizardModal
+        open={wizardOpen}
+        initialKind={wizardKind}
+        config={config}
+        telemetry={telemetry}
+        onClose={() => setWizardOpen(false)}
+        onUpdateConfig={onUpdateConfig}
+        onRefreshAll={onRefreshAll}
+      />
     </div>
   );
 }

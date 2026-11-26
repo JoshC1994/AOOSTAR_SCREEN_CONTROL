@@ -1,14 +1,12 @@
 import {useCallback, useEffect, useRef, useState} from 'react';
 import {AlertTriangle, ShieldAlert, X} from 'lucide-react';
-import {ConnectionsView} from './components/ConnectionsView.tsx';
-import {DiagnosticsView} from './components/DiagnosticsView.tsx';
 import {ExposedEntitiesView} from './components/ExposedEntitiesView.tsx';
 import {InfoView} from './components/InfoView.tsx';
 import {LoginView} from './components/LoginView.tsx';
 import {QuickGuideModal} from './components/QuickGuideModal.tsx';
 import {SavedScreensView} from './components/SavedScreensView.tsx';
 import {ScreenStudioView} from './components/ScreenStudioView.tsx';
-import {SettingsView} from './components/SettingsView.tsx';
+import {type SettingsSection, SettingsView} from './components/SettingsView.tsx';
 import {DEFAULT_CONFIG} from './presets.ts';
 import type {
   AuthStatusResponse,
@@ -28,15 +26,13 @@ import {
 } from './utils/apiClient.ts';
 import {isScreenUnsaved, screenSignature, upsertSavedScreen} from './utils/screenSave.ts';
 
-type ActiveTab = 'screens' | 'saved' | 'entities' | 'connections' | 'settings' | 'diagnostics' | 'info';
+type ActiveTab = 'screens' | 'saved' | 'entities' | 'settings' | 'info';
 
 const NAV_TABS: Array<{id: ActiveTab; label: string}> = [
   {id: 'screens', label: 'Screens'},
   {id: 'saved', label: 'Saved Screens'},
   {id: 'entities', label: 'Entities'},
-  {id: 'connections', label: 'Connections'},
   {id: 'settings', label: 'Settings'},
-  {id: 'diagnostics', label: 'Diagnostics'},
   {id: 'info', label: 'Info'},
 ];
 
@@ -109,6 +105,11 @@ export default function App() {
   });
   const [showDefaultPwModal, setShowDefaultPwModal] = useState(false);
   const [focusSecurityCounter, setFocusSecurityCounter] = useState(0);
+  const [screenEditTrigger, setScreenEditTrigger] = useState(0);
+  const [settingsFocusSection, setSettingsFocusSection] = useState<{
+    section: SettingsSection;
+    counter: number;
+  } | null>(null);
   const [telemetry, setTelemetry] = useState<TelemetrySnapshot | null>(null);
   const [haEntities, setHaEntities] = useState<HomeAssistantEntity[]>([]);
   const [exposedEntities, setExposedEntities] = useState<ExposedEntity[]>([]);
@@ -199,6 +200,20 @@ export default function App() {
     setActiveTab('settings');
     setFocusSecurityCounter((c) => c + 1);
   };
+
+  const navigateToSettingsSection = (section: SettingsSection) => {
+    setActiveTab('settings');
+    setSettingsFocusSection((prev) => ({section, counter: (prev?.counter ?? 0) + 1}));
+  };
+
+  const refreshDiagnosticsFrame = useCallback(() => {
+    void apiFetch('/api/hardware/devices')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (d?.lastFrame) setLastFrame(d.lastFrame);
+      })
+      .catch(() => {});
+  }, []);
 
   const saveTimeoutRef = useRef<number | null>(null);
 
@@ -646,6 +661,8 @@ export default function App() {
             haEntities={haEntities}
             exposedEntities={exposedEntities}
             onUpdateConfig={handleUpdateConfig}
+            editTrigger={screenEditTrigger}
+            onNavigateToRotationSettings={() => navigateToSettingsSection('screens')}
           />
         )}
 
@@ -653,26 +670,26 @@ export default function App() {
           <SavedScreensView
             config={config}
             onUpdateConfig={handleUpdateConfig}
-            onNavigateToScreens={() => setActiveTab('screens')}
+            onNavigateToScreens={() => {
+              setScreenEditTrigger((c) => c + 1);
+              setActiveTab('screens');
+            }}
           />
         )}
 
         {activeTab === 'entities' && (
           <ExposedEntitiesView
             config={config}
-            exposedEntities={exposedEntities}
-            onUpdateConfig={handleUpdateConfig}
-            onNavigateToScreens={() => setActiveTab('screens')}
-          />
-        )}
-
-        {activeTab === 'connections' && (
-          <ConnectionsView
-            config={config}
             telemetry={telemetry}
             haConnected={haConnected}
+            exposedEntities={exposedEntities}
             onUpdateConfig={handleUpdateConfig}
             onRefreshAll={refreshTelemetry}
+            onNavigateToScreens={(opts) => {
+              if (opts?.edit) setScreenEditTrigger((c) => c + 1);
+              setActiveTab('screens');
+            }}
+            onOpenSettingsConnections={() => navigateToSettingsSection('connections')}
           />
         )}
 
@@ -680,27 +697,19 @@ export default function App() {
           <SettingsView
             config={config}
             telemetry={telemetry}
+            haConnected={haConnected}
             lastFrame={lastFrame}
             onUpdateConfig={handleUpdateConfig}
+            onRefreshAll={refreshTelemetry}
+            onRefreshDiagnostics={refreshDiagnosticsFrame}
+            onNavigateToEntities={() => handleSelectTab('entities')}
             authStatus={authStatus}
             onAuthStatusChanged={async () => {
               await refreshAuthStatus();
             }}
             onSignedOut={handleSignedOut}
             focusSecurityCounter={focusSecurityCounter}
-          />
-        )}
-
-        {activeTab === 'diagnostics' && (
-          <DiagnosticsView
-            onRefreshParent={() => {
-              void apiFetch('/api/hardware/devices')
-                .then((r) => (r.ok ? r.json() : null))
-                .then((d) => {
-                  if (d?.lastFrame) setLastFrame(d.lastFrame);
-                })
-                .catch(() => {});
-            }}
+            focusSection={settingsFocusSection}
           />
         )}
 

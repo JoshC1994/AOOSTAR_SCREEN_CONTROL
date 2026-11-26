@@ -74,6 +74,7 @@ import {
   signSessionCookieValue,
   TaskTriggerSchema,
   TestAgentSchema,
+  TestCustomSchema,
   TestHaSchema,
   UploadDataUrlSchema,
   UploadInitSchema,
@@ -84,6 +85,7 @@ import {
 import {
   buildExposedEntities,
   fetchHomeAssistantEntities,
+  getByJsonPath,
   getCachedOrRefreshIntegrations,
   refreshIntegrationsCache,
   resolveTelemetry,
@@ -1003,6 +1005,91 @@ export function createStudioApp(options?: {
       res.json({ok: true, status: r.status, message: 'Connected to Home Assistant API'});
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Unable to reach Home Assistant';
+      const status = msg.includes('SSRF') || msg.includes('blocked') || msg.includes('scheme') ? 403 : 502;
+      res.status(status).json({ok: false, message: msg});
+    }
+  });
+
+  app.post('/api/integrations/test-custom', async (req, res) => {
+    const parsed = TestCustomSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ok: false, message: 'Valid HTTP/HTTPS endpoint URL is required.'});
+      return;
+    }
+
+    const {url, token, jsonPath} = parsed.data;
+    try {
+      const headers: Record<string, string> = {Accept: 'application/json'};
+      if (token?.trim()) headers.Authorization = `Bearer ${token.trim()}`;
+      const r = await safeOutboundFetch(url.trim(), {
+        headers,
+        timeoutMs: 2500,
+        maxBytes: DEFAULT_UPSTREAM_MAX_BYTES,
+      });
+      if (!r.ok) {
+        res.json({ok: false, status: r.status, message: `Endpoint responded with HTTP ${r.status}`});
+        return;
+      }
+
+      const rawText = r.bodyBuffer.toString('utf8');
+      let parsedJson: unknown = null;
+      let isJson = false;
+      try {
+        parsedJson = JSON.parse(rawText);
+        isJson = true;
+      } catch {
+        isJson = false;
+      }
+
+      const suggestedPaths: Array<{path: string; value: string}> = [];
+      if (isJson && parsedJson && typeof parsedJson === 'object') {
+        const collectPaths = (node: unknown, prefix: string, depth: number) => {
+          if (suggestedPaths.length >= 24 || depth > 3 || !node || typeof node !== 'object') return;
+          if (Array.isArray(node)) {
+            if (node.length > 0 && (typeof node[0] === 'number' || typeof node[0] === 'string')) {
+              suggestedPaths.push({path: `${prefix}.0`, value: String(node[0])});
+            }
+            return;
+          }
+          for (const [k, v] of Object.entries(node as Record<string, unknown>)) {
+            if (suggestedPaths.length >= 24) break;
+            const nextPath = prefix ? `${prefix}.${k}` : k;
+            if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') {
+              suggestedPaths.push({path: nextPath, value: String(v).slice(0, 48)});
+            } else if (v && typeof v === 'object') {
+              collectPaths(v, nextPath, depth + 1);
+            }
+          }
+        };
+        collectPaths(parsedJson, '', 0);
+      }
+
+      const extracted = isJson
+        ? getByJsonPath(parsedJson, jsonPath?.trim() || undefined)
+        : rawText.trim().slice(0, 64);
+
+      const previewValue =
+        extracted !== null
+          ? String(extracted)
+          : isJson
+            ? JSON.stringify(parsedJson).slice(0, 96)
+            : rawText.trim().slice(0, 96);
+
+      res.json({
+        ok: true,
+        status: r.status,
+        message:
+          extracted !== null
+            ? `Reachable · Extracted value: ${String(extracted)}`
+            : jsonPath?.trim()
+              ? `Reachable (HTTP ${r.status}), but path "${jsonPath.trim()}" was not found. Pick a key below.`
+              : `Reachable (HTTP ${r.status})`,
+        extractedValue: extracted !== null ? String(extracted) : null,
+        previewValue,
+        suggestedPaths,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Unable to reach custom endpoint';
       const status = msg.includes('SSRF') || msg.includes('blocked') || msg.includes('scheme') ? 403 : 502;
       res.status(status).json({ok: false, message: msg});
     }

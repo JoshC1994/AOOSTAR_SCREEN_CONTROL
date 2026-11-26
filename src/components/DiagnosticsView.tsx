@@ -16,9 +16,10 @@ import {apiFetch} from '../utils/apiClient.ts';
 
 interface DiagnosticsViewProps {
   onRefreshParent?: () => void;
+  embedded?: boolean;
 }
 
-export function DiagnosticsView({onRefreshParent}: DiagnosticsViewProps) {
+export function DiagnosticsView({onRefreshParent, embedded = false}: DiagnosticsViewProps) {
   const [diag, setDiag] = useState<DiagnosticsSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [busyAction, setBusyAction] = useState<string | null>(null);
@@ -211,7 +212,7 @@ export function DiagnosticsView({onRefreshParent}: DiagnosticsViewProps) {
   const aster = diag?.asterctl;
 
   return (
-    <div className="max-w-[1280px] mx-auto p-6 space-y-6">
+    <div className={embedded ? 'space-y-6' : 'max-w-[1280px] mx-auto p-6 space-y-6'}>
       {/* Safety Warning Banner */}
       <div className="rounded-lg border border-amber-300 dark:border-amber-700/60 bg-amber-50 dark:bg-amber-950/25 p-4 flex flex-wrap items-start justify-between gap-4">
         <div className="flex items-start gap-3">

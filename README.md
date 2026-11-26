@@ -1,107 +1,159 @@
 # Aoostar Display Studio
 
-Local-first Dockerized Unraid telemetry monitor and 960×376 secondary USB LCD studio for **Aoostar NAS** hardware (WTR MAX / GEM12+ PRO, USB-UART `VID 0x0416`, `PID 0x90A1`), created and maintained by **JoshC1994**.
+Open-source, local-first Dockerized telemetry monitor and **960×376 secondary USB-UART LCD studio** for **Aoostar NAS** hardware (WTR MAX / GEM12+ PRO, USB-UART `VID 0x0416`, `PID 0x90A1`), created and maintained by **JoshC1994**.
+
+[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-Support-FFDD00?style=flat-square&logo=buy-me-a-coffee&logoColor=000000)](https://buymeacoffee.com/M50wCmpncp)
+![Platform](https://img.shields.io/badge/Docker-Unraid%20%7C%20Linux-2496ED?style=flat-square&logo=docker&logoColor=white)
+![Hardware](https://img.shields.io/badge/Aoostar%20LCD-960x376%200416%3A90A1-F59E0B?style=flat-square)
 
 Repository: `https://github.com/JoshC1994/AOOSTAR_SCREEN_CONTROL`  
 Container Image: `ghcr.io/joshc1994/aoostar_screen_control:latest`
 
+![Aoostar NAS Hardware Display Showcase](./docs/nas_lcd_showcase.jpg)
+
 ---
 
-## Features
+## Why Aoostar Display Studio? (Security & Open Source)
 
-- **960×376 Drag-and-Drop Screen Studio**: Build screens from **Blank**, **Saved**, or **Templates** with live telemetry preview, custom fonts, and `0° / 90° / 180° / 270°` orientation support.
-- **Unified Headless Renderer (`@resvg/resvg-js`)**: Client preview (`/api/hardware/preview.png`) and background LCD daemon pushes share the same server-side 960×376 compositor.
-- **Async Diff-Cached USB-UART Streaming (Sole Live Driver)**: Mirrors the `zehnm/aoostar-rs` wire protocol (`1,500,000` baud, `47B` chunks, `15,360` total chunks, `'A'` ACK, zero wire CRC) directly from Node.js without spawning `asterctl` per tick, supporting per-screen `durationSec` dwell rotation, software brightness scaling, and chunk diff updates with periodic full refresh.
-- **Unraid / Linux Telemetry**: Reads real CPU, GPU (`nvidia-smi`, `intel_gpu_top`, `radeontop`, DRM sysfs), `lm-sensors` / `hwmon`, `/var/local/emhttp` array & parity progress, Docker containers, and SMB/SSH sessions.
-- **Security Hardening**: Username/password login (`data/credentials.json` mode `0600`, salted `scrypt` hashes), default-password LAN-only guard, login rate limiting, optional hashed script API token, masked stored secrets, host-header & origin CSRF protection, outbound SSRF IP/CIDR filtering, and magic-byte validated raster/video uploads (SVG disabled).
+Many mini-PC and NAS owners avoid proprietary OEM Windows display utilities because closed-source vendor binaries often bundle opaque background services, elevated privileges, or undocumented network calls. **Aoostar Display Studio** replaces OEM software with an auditable, 100% local Docker container:
+
+- **Zero Cloud / Zero Phone-Home**: Runs entirely inside your LAN; no external analytics, telemetry, or vendor accounts.
+- **Hardened Authentication & Network Guards**: Salted `scrypt` credential storage (`data/credentials.json` mode `0600`), LAN-only guard while using default credentials, login rate limiting, hashed API tokens, host-header & `Origin` CSRF validation, outbound SSRF IP/CIDR filtering, and magic-byte upload validation (SVG disabled).
+- **Non-Root Container Execution**: `docker-entrypoint.sh` handles host volume & USB `/dev/ttyACM*` group permissions cleanly at boot and immediately drops privileges to UID/GID `1000:1000` (`node`) via `gosu`.
+- **User-Agnostic Design**: Works cleanly on **Unraid** and standard **Linux Docker / Compose** hosts.
+
+---
+
+## Screenshots
+
+### Studio Display Preview & Layout Editor
+Clean live 960×376 showcase by default, with a **Test Rotate** browser preview button and an **Edit** toggle that reveals drag-and-drop blocks, themes, media uploads, and per-block styling.
+
+![Aoostar Display Studio Web Preview](./docs/studio_preview.jpg)
+
+---
+
+## Key Features
+
+- **Clean Screens Preview + Toggleable Studio Editor**: View your live 960×376 LCD frame distraction-free, test multi-screen cycling locally with **Test Rotate**, or click **Edit** to reveal Blocks, Themes, Media Library (PNG/JPG/WebP/GIF/MP4/WebM), Snap Grid, and the Block Inspector.
+- **Unified Entities & Connection Wizard**: Built-in host telemetry plus a guided **Add Connection Wizard** for **Home Assistant** and **Custom HTTP / JSON APIs** (Pi-hole, Tautulli, solar inverters, UPS, etc.) with live endpoint testing and clickable JSON key detection.
+- **One-Click Cards & Multi-Entity Graphs**: Select any exposed entity to place a **Number**, **Graph**, or **Gauge**, or select multiple entities at once to build a **Multi-Series Line/Area Graph**, **Bar Chart**, or **Number List** on any screen.
+- **Organized Settings & Built-In Diagnostics**: Settings cleanly separates **Screens & Rotation** (hardware Auto-Rotate & dwell seconds), **Entities & Connections**, **Display & Hardware**, **Security**, and full **Diagnostics** (protocol dry run, safe `DISPLAY_ON` probe, and live TX/RX logs for fault-finding).
+- **Native Node.js Diff-Cached USB-UART Driver**: Implements the `zehnm/aoostar-rs` protocol (`1,500,000` baud, `47B` chunks, `15,360` total chunks, `'A'` ACK, zero wire CRC) asynchronously inside Node.js without spawning external binaries per frame.
+- **Host Hardware & Container Telemetry**: Reads CPU load/temp/power, GPU metrics (`nvidia-smi`, `intel_gpu_top`, `radeontop`, DRM sysfs), `lm-sensors` / `hwmon`, `/var/local/emhttp` array status (when mounted on Unraid), Docker containers, and SMB/SSH sessions.
+
+---
+
+## How to Install
+
+### Option 1: Unraid (Community Applications / Docker Template)
+
+1. In Unraid **Docker** -> **Add Container** (or Community Applications via `templates/aoostar-display-studio.xml`):
+   - **Repository**: `ghcr.io/joshc1994/aoostar_screen_control:latest`
+   - **WebUI Port**: `3000` -> `3000`
+   - **Appdata**: `/mnt/user/appdata/aoostar-display-studio` -> `/app/data`
+   - **Extra Parameters (included automatically by template)**: `--device=/dev/ttyACM0:/dev/ttyACM0 --group-add=20`
+   - **Read-Only Host Mounts**:
+     - `/sys/class/hwmon` -> `/sys/class/hwmon` (`ro`)
+     - `/var/local/emhttp` -> `/var/local/emhttp` (`ro`, Unraid array stats)
+     - `/var/run/docker.sock` -> `/var/run/docker.sock` (`ro`, optional; or use Docker Socket Proxy)
+2. Start the container—no manual host `chown` or `--user` overrides needed (`docker-entrypoint.sh` repairs `/app/data` ownership and serial group access automatically before dropping to non-root via `gosu`).
+3. Optional overrides: set `AOOSTAR_UID` / `AOOSTAR_GID` (defaults `1000` / `1000`, `0` is rejected) if you want custom file ownership.
+
+### Option 2: Generic Linux / Docker Compose
+
+```yaml
+services:
+  aoostar-display-studio:
+    image: ghcr.io/joshc1994/aoostar_screen_control:latest
+    container_name: aoostar-display-studio
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    devices:
+      - /dev/ttyACM0:/dev/ttyACM0
+    environment:
+      - AOOSTAR_BIND=0.0.0.0
+      - AOOSTAR_UID=1000
+      - AOOSTAR_GID=1000
+      - AOOSTAR_ENABLE_SERIAL_WRITES=false # Set true after Dry Run validation
+    volumes:
+      - ./appdata:/app/data
+      - /sys/class/hwmon:/sys/class/hwmon:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+```
+
+> **Note:** Mount `/var/local/emhttp:/var/local/emhttp:ro` only on Unraid hosts, and map `--device=/dev/dri` if using Intel/AMD GPU telemetry.
+
+---
+
+## How to Use
+
+1. **Sign In & Secure Your Account**:
+   - Open `http://<SERVER-IP>:3000` and sign in with default credentials **`admin` / `admin`**.
+   - Change your password in **Settings -> Security** (or set `AOOSTAR_ADMIN_USER` / `AOOSTAR_ADMIN_PASSWORD` in container environment variables).
+   - *Account Recovery*: Delete `credentials.json` inside your appdata folder and restart the container to reset credentials without losing screens, connections, or media.
+2. **Validate Hardware Safely (First-Time Check)**:
+   - Open **Settings -> Diagnostics** and run **Dry run** to inspect the `960×376` RGB565 packet stream safely without touching `/dev/ttyACM0`.
+   - Once your USB device (`0416:90a1`) shows `Read/Write OK`, set `AOOSTAR_ENABLE_SERIAL_WRITES=true` (or unlock serial writes in **Settings -> Display & Hardware**).
+3. **Preview & Customize Screens**:
+   - On the **Screens** tab, switch between screens, click **Test Rotate** to preview cycling in your browser, or click **+ Add Screen** (**Blank**, **Saved**, or **Templates**).
+   - Click **Edit** to reveal **Blocks**, **Themes**, **Media Library**, and the **Inspector**; click **Done Editing** when finished.
+4. **Connect Sources & Build Graphs**:
+   - Open **Entities**, click **+ Add Connection** to link **Home Assistant** or any **Custom HTTP / JSON** endpoint using the guided wizard.
+   - Rename tags/units inline, select your target screen, and click **Number**, **Graph**, or **Gauge**—or check multiple rows and click **Build Area Graph** / **Build Bar Chart**.
+5. **Deploy & Configure Rotation**:
+   - Click **Push to Screen** in the top header to start autonomous live updates on the physical LCD.
+   - Open **Settings -> Screens & Rotation** to toggle real hardware **Auto-Rotate** on/off and set per-screen dwell times.
+
+---
+
+## Next Stage & Platform Roadmap
+
+Because Aoostar Display Studio is built as a lightweight, non-root OCI Docker container, it can already run anywhere Docker and USB passthrough are supported. Planned for the **Next Stage**:
+
+- **TrueNAS SCALE Support**: Verified TrueNAS SCALE Custom App deployment guide, native USB-UART (`/dev/ttyACM0`) passthrough documentation, and expanded ZFS pool / dataset telemetry widgets.
+- **Broader NAS & Linux Presets**: Additional out-of-the-box screen templates tuned for TrueNAS, Proxmox/homelab nodes, and bare-metal Debian/Ubuntu servers.
+- **Screen-to-Screen Diff Optimization**: Diffing across screen transitions to reduce switch traffic even further.
 
 ---
 
 ## Transport Architecture & Compatibility Trade-Offs
 
-- **Single Serial Owner (`Node.js`)**: All live rendering, rotation, sleep blanking (`DISPLAY_OFF`/`DISPLAY_ON`), brightness scaling, and frame diff-caching run directly in the Node.js async USB-UART driver. `asterctl` is **not** required or bundled by default, which keeps the Docker image lightweight with no Rust build stage.
+- **Single Serial Owner (`Node.js`)**: All live rendering, rotation, sleep blanking (`DISPLAY_OFF`/`DISPLAY_ON`), brightness scaling, and frame diff-caching run directly inside the Node.js async USB-UART driver. `asterctl` is **not** required or bundled by default.
 - **No `monitor.json` / `sensor-mapping.cfg` Compatibility**: External `zehnm/aoostar-rs` `monitor.json` panel definitions and `sensor-mapping.cfg` files are **not** consumed by Aoostar Display Studio, because the app renders live widget layouts server-side via `@resvg/resvg-js` with per-screen `durationSec` dwell timers.
-- **Optional `asterctl` Diagnostics**: If you mount an `asterctl` binary into the container (`/usr/local/bin/asterctl` or `AOOSTAR_ASTERCTL_BIN`), Diagnostics exposes `--simulate --save` reference comparison and manual `--on` / `--off` checks serialized under the single serial port mutex (closing the active Node serial handle first and resetting the diff cache afterwards).
+- **Optional `asterctl` Diagnostics**: Mounting an external `asterctl` binary (`/usr/local/bin/asterctl` or `AOOSTAR_ASTERCTL_BIN`) unlocks `--simulate --save` reference comparison and manual `--on` / `--off` checks inside **Settings -> Diagnostics** under the shared serial mutex.
 
 ---
 
-## Unraid Docker Installation
+## Reverse Proxy, Udev & Docker Socket Proxy
 
-1. In Unraid **Docker** -> **Add Container** (or Community Applications using `templates/aoostar-display-studio.xml`):
-   - **Repository**: `ghcr.io/joshc1994/aoostar_screen_control:latest`
-   - **WebUI Port**: `3000` -> `3000`
-   - **Appdata**: `/mnt/user/appdata/aoostar-display-studio` -> `/app/data`
-   - **Extra Parameters (included automatically by the template)**: `--device=/dev/ttyACM0:/dev/ttyACM0 --group-add=20` (passes the LCD device and Unraid `dialout` group GID `20` without duplicating device flags; adjust `--group-add` only if your host uses a different `dialout` GID, e.g. `stat -c '%g' /dev/ttyACM0`)
-   - **Mounts**:
-     - `/var/local/emhttp` -> `/var/local/emhttp` (`ro`)
-     - `/sys/class/hwmon` -> `/sys/class/hwmon` (`ro`)
-     - `/var/run/docker.sock` -> `/var/run/docker.sock` (`ro`, optional; see Docker Socket Proxy below)
-2. Automatic permissions & non-root runtime:
-   - On startup, `docker-entrypoint.sh` starts briefly as `root`, automatically creates/repairs ownership of `/app/data` and `/app/data/uploads` when needed, grants the non-root runtime user supplementary access to whatever host GID owns `/dev/ttyACM*` / `/dev/ttyUSB*` / `/dev/aoostar_lcd` (e.g. Unraid/Slackware `dialout` GID `16`, `uucp` GID `14`, or Debian `dialout` GID `20`), adjusts container-local device permissions if still inaccessible, and immediately drops privileges via `gosu` before launching Node as UID/GID `1000:1000` (`node`).
-   - You do **not** need to run manual `chown -R 1000:1000 /mnt/user/appdata/aoostar-display-studio` commands or add `--user=1000:1000` in Extra Parameters.
-   - To override the runtime UID/GID if needed (e.g., to match `nobody:users` `99:100`), set the optional **Advanced** template variables `AOOSTAR_UID` and `AOOSTAR_GID` (defaults are `1000` and `1000`; `0` is rejected).
-3. First-run login & account recovery:
-   - Open `http://<SERVER-IP>:3000` and sign in with default credentials **`admin` / `admin`** (non-blocking prompts encourage changing them in **Settings > Security**).
-   - While the default password is active, logins from outside local private networks (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, loopback, `fc00::/7`) are blocked unless `AOOSTAR_ALLOW_DEFAULT_PASSWORD_PUBLIC=true` or you change the password.
-   - To preset credentials declaratively, set `AOOSTAR_ADMIN_USER` and `AOOSTAR_ADMIN_PASSWORD` environment variables.
-   - **Account Recovery**: If you forget your password, delete `/mnt/user/appdata/aoostar-display-studio/credentials.json` and restart the container to restore `admin / admin` without losing saved screens, connections, or uploaded media.
-4. Validate safely before enabling hardware writes:
-   - Keep `AOOSTAR_ENABLE_SERIAL_WRITES=false` initially, open **Diagnostics**, and run **Dry run** first to validate packet framing safely.
-   - Only after validating Dry Run, set `AOOSTAR_ENABLE_SERIAL_WRITES=true` or unlock serial writes in **Settings**.
-
----
-
-## Unraid Reverse Proxy Configuration
-
-Because Aoostar Display Studio enforces strict `Host` and `Origin` validation to block DNS rebinding and CSRF:
-
-1. Point your reverse proxy (SWAG, Nginx Proxy Manager, Caddy, or Unraid Tailscale/Proxy) to `http://<SERVER-IP>:3000`.
-2. Add these environment variables to the container:
-   - `AOOSTAR_ALLOWED_HOSTS=lcd.yourdomain.com` (comma-separated hostnames)
+### Reverse Proxy
+Aoostar Display Studio validates `Host` and `Origin` headers to prevent DNS rebinding and CSRF:
+1. Proxy traffic to `http://<SERVER-IP>:3000` and forward `Host`, `X-Forwarded-Host`, and `X-Forwarded-Proto`.
+2. Set container environment variables:
+   - `AOOSTAR_ALLOWED_HOSTS=lcd.yourdomain.com`
    - `AOOSTAR_TRUST_PROXY=true`
-3. Forward `Host`, `X-Forwarded-Host`, and `X-Forwarded-Proto` headers in your proxy config.
 
----
-
-## Host Udev Rule (Recommended on Unraid / Linux)
-
-Prevent `ModemManager` from probing the Aoostar LCD CDC-ACM device and create a deterministic `/dev/aoostar_lcd` symlink. Add `/boot/config/rules.d/99-aoostar-lcd.rules` (and copy to `/etc/udev/rules.d/` on boot via `go` script):
+### Host Udev Rule (Prevents `ModemManager` Interference)
+Create `/etc/udev/rules.d/99-aoostar-lcd.rules` (on Unraid store in `/boot/config/rules.d/` and copy on boot):
 
 ```udev
 SUBSYSTEM=="tty", ATTRS{idVendor}=="0416", ATTRS{idProduct}=="90a1", SYMLINK+="aoostar_lcd", MODE="0660", GROUP="dialout", ENV{ID_MM_DEVICE_IGNORE}="1"
 ```
 
-Reload udev rules:
+Reload with:
 
 ```bash
 udevadm control --reload-rules && udevadm trigger --subsystem-match=tty
 ```
 
----
-
-## Optional Docker Socket Proxy
-
-To avoid mounting `/var/run/docker.sock` directly into the container, run a read-only proxy (such as `tecnativa/docker-socket-proxy` with `CONTAINERS=1`) and configure:
+### Optional Docker Socket Proxy
+To avoid mounting `/var/run/docker.sock` directly, run `tecnativa/docker-socket-proxy` (`CONTAINERS=1`) and set:
 
 ```env
 DOCKER_HOST=tcp://dockerproxy:2375
 ```
-
----
-
-## Host LCD Power Control (`On` / `Off` / Optional `asterctl`)
-
-Power state transitions (`DISPLAY_ON` / `DISPLAY_OFF`) are handled directly over the Node USB-UART transport via **Settings**, **Diagnostics**, `/api/display/on`, `/api/display/off`, sleep schedules, and graceful container `SIGTERM` shutdown—even without `asterctl` installed. If you mount an optional host `asterctl` binary separately, CLI `--on`/`--off` also works when the container's serial writes are stopped:
-
-```bash
-# Power LCD off using host asterctl (optional)
-asterctl --off --device /dev/ttyACM0
-
-# Power LCD on using host asterctl (optional)
-asterctl --on --device /dev/ttyACM0
-```
-
-You can also toggle **Power off LCD at boot** and **Off on emergency stop** inside **Settings -> Brightness, Orientation & Sleep Schedule**.
 
 ---
 
@@ -122,10 +174,23 @@ npm start
 
 ---
 
-## Known Limitations
+## Acknowledgements & Thanks
 
-- **Physical Hardware Verification**: Protocol framing, chunk diffing, ACK handshakes, retry/backoff, and serial error handling were verified against a Linux PTY USB-UART emulator (`tests/pty-emulator.py` / `tests/serial-pty.test.ts`) and mocked serial transports (`tests/serial-integration.test.ts`), rather than an attached physical Aoostar `0416:90a1` LCD module. Always run **Dry run** in Diagnostics first on real hardware.
-- **Standalone Live Canvas Parity**: `apex_custom` dynamic ApexCharts JSON uses native browser Canvas/SVG in the studio UI and falls back to structured data visualization in the headless server renderer.
+- **[zehnm / aoostar-rs](https://github.com/zehnm/aoostar-rs)** — Huge shoutout to **zehnm** for reverse-engineering and documenting the Aoostar WTR MAX / GEM12+ PRO USB-UART display protocol (`VID 0x0416`, `PID 0x90A1`, `960×376` RGB565 LE framing). This project wouldn't exist without their groundwork.
+- **ApexCharts** & **`@resvg/resvg-js`** — Powering live charting and crisp headless frame rendering.
+- **Unraid & Self-Hosted Community** — Real-hardware testing, serial diagnostics feedback, and template improvements.
+
+---
+
+## Support the Project
+
+If Aoostar Display Studio helped power your NAS display or replace OEM software, consider supporting ongoing development:
+
+[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-Support%20JoshC1994-FFDD00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=000000)](https://buymeacoffee.com/M50wCmpncp)
+
+`https://buymeacoffee.com/M50wCmpncp`
+
+---
 
 ## License
 
